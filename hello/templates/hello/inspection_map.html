@@ -1,0 +1,1587 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Inspection Data Map</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Use newer Leaflet version with crossorigin attribute -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        body { margin: 0; padding: 0; font-family: sans-serif; overflow: hidden; }
+        #map { 
+            width: 60%; 
+            height: 100vh; 
+            float: left; 
+            position: relative;
+            z-index: 1;
+            box-sizing: border-box;
+            transition: width 0.3s ease, margin-left 0.3s ease;
+        }
+        #map.expanded-left {
+            width: 80%;
+            margin-left: 0;
+        }
+        #sidebar {
+            width: 20%; 
+            height: 100vh; 
+            float: right;
+            overflow: auto; 
+            padding: 15px;
+            padding-top: 0px;
+            background: #f4f4f4;
+            box-sizing: border-box;
+            position: fixed;
+            right: 0;
+            top: 0;
+        }
+        #left-sidebar {
+            width: 20%;
+            height: 100vh;
+            float: left;
+            overflow-y: auto;
+            padding: 15px;
+            background: #f4f4f4;
+            box-sizing: border-box;
+            transition: width 0.3s ease, margin-left 0.3s ease;
+            z-index: 2;
+        }
+        #left-sidebar.hidden {
+            width: 0;
+            padding: 0;
+            margin-left: -20px;
+        }
+        #toggleLeftButton {
+            position: absolute;
+            left: 20%;
+            top: 50%;
+            z-index: 1000;
+            background: #056839;
+            color: white;
+            border: none;
+            border-radius: 0 4px 4px 0;
+            width: 20px;
+            height: 40px;
+            cursor: pointer;
+            font-size: 14px;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+            transition: left 0.3s ease;
+        }
+        #toggleLeftButton.hidden {
+            left: 0;
+        }
+        #loading {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.6);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+        .spinner {
+            border: 6px solid #f3f3f3;
+            border-top: 6px solid #4CAF50;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            animation: spin 1s linear infinite;
+            margin-bottom: 15px;
+        }
+        .loading-text {
+            color: white;
+            font-size: 18px;
+            font-weight: bold;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        #error-message {
+            background-color: #ffebee;
+            color: #c62828;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            border-left: 4px solid #c62828;
+            display: none;
+            position: fixed;
+            top: 50px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 2000;
+            max-width: 80%;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            font-weight: bold;
+        }
+        .leaflet-control-zoom {
+            position: absolute !important;
+            bottom: 20px !important;
+            left: 10px !important;
+            top: auto !important;
+        }
+        #homeButton {
+            position: absolute !important;
+            top: 10px !important;
+            left: 10px !important;
+            z-index: 1000;
+            background: #4fc965;
+            border: 2px solid rgba(0,0,0,0.2);
+            border-radius: 8px;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 16px;
+            color: #333;
+            box-shadow: 0 1px 5px rgba(0,0,0,0.65);
+        }
+        #homeButton:hover {
+            background: #f4f4f4;
+        }
+        #clearFiltersButton {
+            background: #056839;
+            border: 2px solid #ffffff;
+            border-radius: 35px;
+            width: auto;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: bold;
+            color: white;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+            margin-top: 15px;
+            transition: all 0.3s ease;
+            padding: 0 12px;
+            letter-spacing: 0.5px;
+        }
+        #clearFiltersButton:hover {
+            background: #078149;
+            transform: scale(1.05);
+            box-shadow: 0 3px 7px rgba(0,0,0,0.4);
+        }
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            margin-bottom: 15px;
+        }
+        .filter-group label {
+            font-size: 13px;
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #333;
+        }
+        .filter-group select {
+            padding: 5px;
+            width: 100%;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+        }
+        #featureCount {
+            position: fixed;
+            top: 10px;
+            right: 21%;
+            font-size: 16px;
+            font-weight: bold;
+            color: #fffdfd;
+            z-index: 1001;
+            
+            background-color: rgba(6, 112, 41, 0.932);
+            padding: 5px 10px;
+            border-radius: 5px;
+        }
+        #plotlyChartContainer {
+            height: 45%; 
+            position: relative; 
+            margin-top: 20px;
+            padding: 10px;
+            background: white; 
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+            border-radius: 8px;
+        }
+        #chartSelectorContainer {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+            padding: 0 5px;
+        }
+        #chartSelector {
+            flex-grow: 1;
+            padding: 5px;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+            background-color: white;
+            font-size: 12px;
+        }
+        #barChartContainer {
+            height: 45%; 
+            position: relative; 
+            margin-top: 20px; 
+            padding: 6px; 
+            background: white; 
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1); 
+            border-radius: 8px;
+        }
+        canvas { width: 100% !important; height: 100% !important; }
+        .popup-content { font-size: 14px; }
+        .chart-title {
+            text-align: center;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #333;
+            font-size: 14px;
+        }
+        /* Custom popup styles to remove white border */
+        .leaflet-popup {
+            margin-bottom: 0;
+        }
+        .leaflet-popup-content-wrapper {
+            padding: 0;
+            border-radius: 10px;
+            box-shadow: 0 3px 14px rgba(0,0,0,0.4);
+            border: none;
+        }
+        .leaflet-popup-content {
+            margin: 0;
+            padding: 0;
+            border-radius: 10px;
+        }
+        .leaflet-popup-tip {
+            background: white;
+            border: none;
+            box-shadow: 0 3px 14px rgba(0,0,0,0.4);
+        }
+        
+        /* Custom popup styling to prevent blinking */
+        .custom-popup .leaflet-popup-content-wrapper,
+        .custom-popup .leaflet-popup-tip {
+            transition: none;
+        }
+        
+        /* Ensure popups appear immediately */
+        .leaflet-fade-anim .leaflet-popup {
+            opacity: 1;
+            transition: none;
+        }
+        /* Add legend styles */
+        .legend {
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 0 15px rgba(0,0,0,0.2);
+            line-height: 1.5em;
+        }
+        .legend i {
+            width: 18px;
+            height: 18px;
+            float: left;
+            margin-right: 8px;
+            opacity: 0.8;
+            border: 1px solid #000;
+            border-radius: 50%;
+        }
+        .legend .title {
+            font-weight: bold;
+            margin-bottom: 5px;
+            font-size: 14px;
+            border-bottom: 1px solid #ccc;
+            padding-bottom: 5px;
+        }
+        .legend .item {
+            margin-bottom: 3px;
+            font-size: 12px;
+            clear: both;
+        }
+        .sidebar-title {
+            font-weight: bold;
+            margin-bottom: 15px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid #ddd;
+            color: #056839;
+            font-size: 16px;
+            text-align: center;
+        }
+        #chartTabs {
+            display: flex;
+            width: 100%;
+            border-bottom: 1px solid #ddd;
+            margin-bottom: 10px;
+        }
+        .chart-tab {
+            flex: 1;
+            text-align: center;
+            padding: 8px 0;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: bold;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s ease;
+            color: #666;
+        }
+        .chart-tab:hover {
+            background-color: #f5f5f5;
+            color: #056839;
+        }
+        .chart-tab.active {
+            border-bottom: 3px solid #056839;
+            color: #056839;
+            background-color: #f5f5f5;
+        }
+        .leaflet-popup-tip-container {
+            pointer-events: none;
+        }
+        .persistent-popup .leaflet-popup-content-wrapper {
+            pointer-events: auto;
+        }
+        .persistent-popup .leaflet-popup-close-button {
+            pointer-events: auto;
+        }
+    </style>
+</head>
+<body>
+    <div id="loading">
+        <div class="spinner"></div>
+        <div class="loading-text">Loading...</div>
+    </div>
+    
+    <div id="error-message"></div>
+
+    <!-- New left sidebar for filters -->
+    <div id="left-sidebar">
+        <div class="sidebar-title">Inspection Filters</div>
+        <div class="filter-group">
+            <label for="zoneSelect">ZONE</label>
+            <select id="zoneSelect">
+                <option value="All">All Zones</option>
+                {% for zone in unique_zones %}
+                <option value="{{ zone }}">{{ zone }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="filter-group">
+            <label for="circleSelect">CIRCLE</label>
+            <select id="circleSelect">
+                <option value="All">All Circles</option>
+                {% for circle in unique_circles %}
+                <option value="{{ circle }}">{{ circle }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="filter-group"> 
+            <label for="divisionSelect">DIVISION</label>
+            <select id="divisionSelect">
+                <option value="All">All Divisions</option>
+                {% for division in unique_divisions %}
+                <option value="{{ division }}">{{ division }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="filter-group">
+            <label for="conditionSelect">CONDITION</label>
+            <select id="conditionSelect">
+                <option value="All">All Conditions</option>
+                {% for condition in unique_conditions %}
+                <option value="{{ condition }}">{{ condition }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="filter-group">
+            <label for="canalSelect">YEAR</label>
+            <select id="canalSelect">
+                <option value="All">All Years</option>
+                {% for canal in unique_canals %}
+                <option value="{{ canal }}">{{ canal }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="filter-group">
+            <label for="domainSelect">DOMAIN</label>
+            <select id="domainSelect">
+                <option value="All">All Domains</option>
+                {% for domain in unique_domains %}
+                <option value="{{ domain }}">{{ domain }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="filter-group">
+            <label for="inspectionTypeSelect">TYPE</label>
+            <select id="inspectionTypeSelect">
+                <option value="All">All Types</option>
+                {% for type in unique_inspection_types %}
+                <option value="{{ type }}">{{ type }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="filter-group">
+            <button id="clearFiltersButton" title="Clear Filters">RESET</button>
+        </div>
+    </div>
+
+    <div id="featureCount"></div>
+    <div id="map"></div>
+    <a href="http://127.0.0.1:8000/" id="homeButton" title="Go to Home Page">🏠</a>
+    
+    <!-- Only keep the left sidebar toggle button -->
+    <button id="toggleLeftButton" title="Toggle Filter Sidebar">◄</button>
+
+    <div id="sidebar">
+        <div id="plotlyChartContainer">
+            <div id="chartTabs">
+                <div class="chart-tab" data-chart-type="year">Year</div>
+                <div class="chart-tab active" data-chart-type="domain">Domain</div>
+                <div class="chart-tab" data-chart-type="type">Type</div>
+                <div class="chart-tab" data-chart-type="condition">Condition</div>
+            </div>
+            <div id="plotlyPieChart" style="width:100%; height:100%;"></div>
+        </div>
+        <div id="barChartContainer">
+            <div class="chart-title">No. of Inspected Point </div>
+            <canvas id="barChart"></canvas>
+        </div>
+    </div>
+
+    {% if error_msg %}
+    <script>
+        // Script to show error message from server
+        var errorElement = document.getElementById('error-message');
+        errorElement.textContent = "{{ error_msg|escapejs }}";
+        errorElement.style.display = "block";
+    </script>
+    {% endif %}
+
+    <script>
+        // Force hide loading spinner after a short timeout
+        document.addEventListener('DOMContentLoaded', function() {
+            // Update loading text while data is being prepared
+            setTimeout(function() {
+                const loadingText = document.querySelector('.loading-text');
+                if (loadingText) loadingText.textContent = "Mapping 5000+ inspection records...";
+            }, 500);
+            
+            // Hide after reasonable timeout (better to show progress than cut off too early)
+            setTimeout(function() {
+                document.getElementById('loading').style.display = 'none';
+                console.log("Loading spinner hidden on DOMContentLoaded");
+            }, 3000);
+        });
+        
+        // Toggle sidebar functionality
+        const toggleLeftButton = document.getElementById('toggleLeftButton');
+        const sidebar = document.getElementById('sidebar');
+        const leftSidebar = document.getElementById('left-sidebar');
+        const mapElement = document.getElementById('map');
+        const featureCount = document.getElementById('featureCount');
+        
+        // Only left sidebar toggle functionality remains
+        toggleLeftButton.addEventListener('click', function() {
+            leftSidebar.classList.toggle('hidden');
+            toggleLeftButton.classList.toggle('hidden');
+            
+            updateMapClass();
+            
+            // Change the arrow direction
+            if (leftSidebar.classList.contains('hidden')) {
+                toggleLeftButton.innerHTML = '►';
+            } else {
+                toggleLeftButton.innerHTML = '◄';
+            }
+            
+            // Force map to recalculate size after toggle
+            setTimeout(function() {
+                map.invalidateSize();
+            }, 400);
+        });
+        
+        // Function to update map class based on left sidebar state only
+        function updateMapClass() {
+            const leftHidden = leftSidebar.classList.contains('hidden');
+            
+            mapElement.classList.remove('expanded-left');
+            
+            if (leftHidden) {
+                mapElement.classList.add('expanded-left');
+            }
+        }
+        
+        // Create the map using the successful approach from data_map.html
+        var map = L.map("map", {
+            minZoom: 5,
+            maxZoom: 18
+        }).setView([29.0, 71.0], 7);
+        console.log("Map created");
+        
+        // Initial view for reset
+        const initialView = { center: [29.0, 71.0], zoom: 7 };
+        
+        // Add tile layer
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+            attribution: "&copy; OpenStreetMap contributors"
+        }).addTo(map);
+        console.log("Tile layer added");
+        
+        // Force map to recalculate size
+        setTimeout(function() {
+            map.invalidateSize();
+            console.log("Map size recalculated");
+        }, 500);
+        
+        // Parse GeoJSON data with improved parsing
+        let geoData;
+        try {
+            // The key difference: using escapejs instead of safe filter
+            geoData = JSON.parse('{{ geojson_str|escapejs }}');
+            console.log("GeoJSON data loaded successfully, features:", geoData.features.length);
+        } catch (e) {
+            console.error("Error parsing GeoJSON data:", e);
+            document.getElementById('error-message').textContent = "Error loading map data: " + e.message;
+            document.getElementById('error-message').style.display = "block";
+            geoData = {"type": "FeatureCollection", "features": []};
+        }
+        
+        let layerGroup = null;
+        let barChart;
+
+        // Create a color palette for dynamic assignment
+        const colorPalette = [
+            "#FF6384", "#36A2EB", "#FFCE56", "#4BC0C0", "#9966FF", 
+            "#FF9F40", "#00CC99", "#FF9999", "#66B2FF", "#99FF99",
+            "#C9CBCF", "#7D8FAF", "#B5EAD7", "#E2F0CB", "#FFDAC1",
+            "#FFB7B2", "#F67280", "#6C5B7B", "#355C7D", "#F8B195"
+        ];
+        
+        // Map to store assigned colors 
+        let colorMap = {};
+        
+        // Get the currently active filter level
+        function getActiveFilterLevel() {
+            const zone = zoneSelect.value;
+            const circle = circleSelect.value;
+            const division = divisionSelect.value;
+            
+            if (zone === "All") return "zone";
+            if (circle === "All") return "circle";
+            if (division === "All") return "division";
+            return "canal";
+        }
+        
+        // Assign colors based on current filter level
+        function updateColorMap() {
+            const level = getActiveFilterLevel();
+            colorMap = {}; // Reset color map
+            
+            // Get unique values for the current level
+            let uniqueValues = [];
+            if (level === "zone") {
+                uniqueValues = [...new Set(geoData.features.map(f => f.properties.zone).filter(Boolean))];
+            } else if (level === "circle") {
+                const zone = zoneSelect.value;
+                const filteredFeatures = geoData.features.filter(f => 
+                    zone === "All" || (f.properties.zone && f.properties.zone.toLowerCase() === zone.toLowerCase())
+                );
+                uniqueValues = [...new Set(filteredFeatures.map(f => f.properties.circle).filter(Boolean))];
+            } else if (level === "division") {
+                const zone = zoneSelect.value;
+                const circle = circleSelect.value;
+                const filteredFeatures = geoData.features.filter(f => 
+                    (zone === "All" || (f.properties.zone && f.properties.zone.toLowerCase() === zone.toLowerCase())) &&
+                    (circle === "All" || (f.properties.circle && f.properties.circle.toLowerCase() === circle.toLowerCase()))
+                );
+                uniqueValues = [...new Set(filteredFeatures.map(f => f.properties.division).filter(Boolean))];
+            } else {
+                const zone = zoneSelect.value;
+                const circle = circleSelect.value;
+                const division = divisionSelect.value;
+                const filteredFeatures = geoData.features.filter(f => 
+                    (zone === "All" || (f.properties.zone && f.properties.zone.toLowerCase() === zone.toLowerCase())) &&
+                    (circle === "All" || (f.properties.circle && f.properties.circle.toLowerCase() === circle.toLowerCase())) &&
+                    (division === "All" || (f.properties.division && f.properties.division.toLowerCase() === division.toLowerCase()))
+                );
+                uniqueValues = [...new Set(filteredFeatures.map(f => f.properties.canal).filter(Boolean))];
+            }
+            
+            // Assign colors
+            uniqueValues.forEach((value, index) => {
+                colorMap[value] = colorPalette[index % colorPalette.length];
+            });
+            
+            console.log(`Assigned ${Object.keys(colorMap).length} colors for ${level} level`);
+        }
+        
+        // Create map style function with dynamic coloring
+        function style(feature) {
+            // Priority 1: Closure inspections are always blue (was red)
+            if (feature.properties.inspection_type && 
+                feature.properties.inspection_type.toLowerCase().includes('closure')) {
+                // Store the color in the feature properties
+                feature.properties.color = "#0facae";
+                return {
+                    radius: 6, // Slightly larger for emphasis
+                    fillColor: "#0fccce", // Blue for Closure (was Red)
+                    color: "#000",
+                    weight: 1.5,
+                    opacity: 1,
+                    fillOpacity: 0.8
+                };
+            }
+            
+            // Priority 2: Use dynamic color based on current filter level
+            const level = getActiveFilterLevel();
+            let color = "#AAAAAA"; // Default gray
+            
+            if (level === "zone" && feature.properties.zone) {
+                color = colorMap[feature.properties.zone] || "#AAAAAA";
+            } else if (level === "circle" && feature.properties.circle) {
+                color = colorMap[feature.properties.circle] || "#AAAAAA";
+            } else if (level === "division" && feature.properties.division) {
+                color = colorMap[feature.properties.division] || "#AAAAAA";
+            } else if (level === "canal" && feature.properties.canal) {
+                color = colorMap[feature.properties.canal] || "#AAAAAA";
+            }
+            
+            // Store the calculated color in the feature properties
+            feature.properties.color = color;
+            
+            return {
+                radius: 5,
+                fillColor: color,
+                color: "#333",
+                weight: 1,
+                opacity: 1,
+                fillOpacity: 0.8
+            };
+        }
+
+        function getContrastYIQ(hexcolor) {
+            hexcolor = hexcolor.replace("#", "");
+            var r = parseInt(hexcolor.substr(0,2),16);
+            var g = parseInt(hexcolor.substr(2,2),16);
+            var b = parseInt(hexcolor.substr(4,2),16);
+            var yiq = ((r*299)+(g*587)+(b*114))/1000;
+            return (yiq >= 128) ? 'black' : 'white';
+        }
+
+        function popupContent(props) {
+            // Ensure we have a valid color
+            const bgColor = props.color || "#4CAF50";
+            const textColor = getContrastYIQ(bgColor);
+            
+            // Handle empty or undefined values
+            const formatValue = (val) => {
+                if (val === 'undefined' || val === 'null' || val === '' || val === 'Unknown') 
+                    return '<span style="color:#888;font-style:italic">Not available</span>';
+                return val;
+            };
+            
+            // Format long text fields - always show full content
+            const formatLongText = (text) => {
+                if (!text || text === 'undefined' || text === 'null' || text === '' || text === 'Unknown')
+                    return '<span style="color:#888;font-style:italic">Not available</span>';
+                return text;
+            };
+            
+            // Determine if this is a Closure inspection
+            const isClosure = props.inspection_type && props.inspection_type.includes("Closure");
+            const inspTypeStyle = isClosure ? 
+                'background-color:#0fccce;color:white;padding:2px 6px;border-radius:3px;font-weight:bold;' : '';
+            
+            return `
+                <div style="background: ${bgColor}; padding: 10px; color: ${textColor}; border-radius: 10px; border: none; box-shadow: none; margin: 0; max-width: 400px;">
+                    <h3 style="margin-top:0;margin-bottom:5px;">${props.name}</h3>
+                    <table style="width:100%;border-collapse:collapse;">
+                        <tr><td><b>Division:</b></td><td>${formatValue(props.division)}</td></tr>
+                        <tr><td><b>Circle:</b></td><td>${formatValue(props.circle)}</td></tr>
+                        <tr><td><b>Zone:</b></td><td>${formatValue(props.zone)}</td></tr>
+                        <tr><td><b>Domain:</b></td><td>${formatValue(props.domain)}</td></tr>
+                        <tr><td><b>Inspection:</b></td><td><span style="${inspTypeStyle}">${formatValue(props.inspection_type)}</span></td></tr>
+                        <tr><td><b>Year:</b></td><td>${formatValue(props.inspection_year)}</td></tr>
+                        <tr><td><b>Condition:</b></td><td>${formatValue(props.condition)}</td></tr>
+                    </table>
+                    <div style="margin-top:8px;"><b>Issue:</b><br>${formatLongText(props.issue)}</div>
+                    <div style="margin-top:8px;"><b>Recommendation:</b><br>${formatLongText(props.recommendation)}</div>
+                    <div style="margin-top:8px;font-size:0.8em;color:${textColor};opacity:0.8;">
+                        Location: ${props.lat.toFixed(6)}, ${props.long.toFixed(6)}
+                    </div>
+                </div>`;
+        }
+
+        function onEachFeature(feature, layer) {
+            // Set up the popup options to be persistent
+            const popupOptions = {
+                closeButton: true,
+                autoClose: false,
+                closeOnClick: false,
+                maxWidth: 400
+            };
+            
+            // Bind a popup that doesn't open automatically
+            layer.bindPopup(function() {
+                return popupContent(feature.properties);
+            }, popupOptions);
+            
+            // Only handle click events, no mouseover/mouseout
+            layer.on('click', function() {
+                // This will open the popup
+                layer.openPopup();
+            });
+        }
+
+        // Home button functionality
+        document.getElementById('homeButton').addEventListener('click', function(e) {
+            // Keep the link navigation functionality (don't need to prevent default)
+            
+            // Also reset map view and filters before navigation
+            map.setView(initialView.center, initialView.zoom);
+            
+            // Reset all filters
+            document.getElementById('zoneSelect').value = 'All';
+            document.getElementById('circleSelect').value = 'All';
+            document.getElementById('divisionSelect').value = 'All';
+            document.getElementById('conditionSelect').value = 'All';
+            document.getElementById('canalSelect').value = 'All';
+            document.getElementById('domainSelect').value = 'All';
+            document.getElementById('inspectionTypeSelect').value = 'All';
+            
+            // Make sure left sidebar is visible
+            if (leftSidebar.classList.contains('hidden')) {
+                leftSidebar.classList.remove('hidden');
+                toggleLeftButton.classList.remove('hidden');
+                toggleLeftButton.innerHTML = '◄';
+            }
+            
+            // Update map class
+            updateMapClass();
+            
+            // Refresh filters and apply
+            filterDropdowns();
+            applyFilters();
+            
+            // Force map to recalculate size
+            setTimeout(function() {
+                map.invalidateSize();
+            }, 400);
+        });
+        
+        // Clear filters button functionality
+        document.getElementById('clearFiltersButton').addEventListener('click', function() {
+            // Reset all filters
+            document.getElementById('zoneSelect').value = 'All';
+            document.getElementById('circleSelect').value = 'All';
+            document.getElementById('divisionSelect').value = 'All';
+            document.getElementById('conditionSelect').value = 'All';
+            document.getElementById('canalSelect').value = 'All';
+            document.getElementById('domainSelect').value = 'All';
+            document.getElementById('inspectionTypeSelect').value = 'All';
+            
+            // Make sure left sidebar is visible
+            if (leftSidebar.classList.contains('hidden')) {
+                leftSidebar.classList.remove('hidden');
+                toggleLeftButton.classList.remove('hidden');
+                toggleLeftButton.innerHTML = '◄';
+            }
+            
+            // Update map class
+            updateMapClass();
+            
+            // Refresh filters and apply
+            filterDropdowns();
+            applyFilters();
+            
+            // Force map to recalculate size
+            setTimeout(function() {
+                map.invalidateSize();
+            }, 400);
+        });
+
+        // Function to update Plotly pie chart dynamically
+        function updatePlotlyPieChart(features) {
+            try {
+                // Get selected chart type from active tab
+                const activeTab = document.querySelector('.chart-tab.active');
+                const chartType = activeTab ? activeTab.dataset.chartType : 'domain';
+                
+                // Count data based on selected type
+                const counts = {};
+                features.forEach(f => {
+                    let key = "Unknown";
+                    
+                    switch(chartType) {
+                        case "domain":
+                            key = f.properties.domain || "Unknown";
+                            break;
+                        case "year":
+                            key = f.properties.inspection_year || "Unknown";
+                            break;
+                        case "type":
+                            key = f.properties.inspection_type || "Unknown";
+                            break;
+                        case "condition":
+                            key = f.properties.condition || "Unknown";
+                            break;
+                    }
+                    
+                    counts[key] = (counts[key] || 0) + 1;
+                });
+
+                const labels = Object.keys(counts);
+                const values = Object.values(counts);
+                const colors = ['#FF6384','#36A2EB','#FFCE56','#4BC0C0','#9966FF','#FF9F40','#00CC99','#FF9999','#66B2FF','#99FF99'];
+
+                // Create pie chart data
+                const data = [{
+                    values: values,
+                    labels: labels.map((label, i) => `${label} (${values[i]})`),
+                    type: 'pie',
+                    hole: 0.3,
+                    marker: {
+                        colors: colors.slice(0, labels.length)
+                    },
+                    textinfo: 'value',
+                    textposition: 'inside',
+                    hovertemplate: '<b>%{label}</b><br>Count: %{value}<br>Percentage: %{percent}<extra></extra>'
+                }];
+
+                // Set chart title based on selected dimension
+                let chartTitle = "Distribution";
+                switch(chartType) {
+                    case "domain":
+                        chartTitle = "Domain Wise Inspection";
+                        break;
+                    case "year":
+                        chartTitle = "Year Wise Inspection";
+                        break;
+                    case "type": 
+                        chartTitle = "Type Wise Inspection";
+                        break;
+                    case "condition":
+                        chartTitle = "Condition Wise Inspection";
+                        break;
+                }
+
+                const layout = {
+                    title: {
+                        text: `<b>${chartTitle}</b>`,
+                        x: 0.5,
+                        font: {size: 14, weight: 'bold' }
+                    },
+                    font: { size: 11 },
+                    margin: { t: 40, b: 80, l: 20, r: 20 },
+                    height: 350,
+                    showlegend: true,
+                    legend: {
+                        orientation: "v",
+                        yanchor: "top",
+                        y: -0.15,
+                        xanchor: "center",
+                        x: 0.5,
+                        font: { size: 10 },
+                        itemsizing: 'constant',
+                        itemwidth: 30,
+                        traceorder: 'normal',
+                        nrows: 2
+                    }
+                };
+
+                const config = {
+                    displayModeBar: false,
+                    responsive: true
+                };
+
+                Plotly.newPlot('plotlyPieChart', data, layout, config);
+            } catch (error) {
+                console.error("Error updating pie chart:", error);
+            }
+        }
+
+        function updateBarChart(features) {
+            try {
+                const zone = zoneSelect.value;
+                const circle = circleSelect.value;
+                const division = divisionSelect.value;
+                const year = canalSelect.value;
+                const domain = domainSelect.value;
+
+                // Get the active filter level - match with the style coloring
+                const activeLevel = getActiveFilterLevel();
+                
+                // Set the labelKey based on current active filter level
+                let labelKey;
+                switch(activeLevel) {
+                    case 'zone':
+                        labelKey = 'zone';
+                        break;
+                    case 'circle':
+                        labelKey = 'circle';
+                        break;
+                    case 'division':
+                        labelKey = 'division';
+                        break;
+                    default:
+                        labelKey = 'inspection_type';
+                }
+                
+                // If everything is filtered down, show inspection years
+                if (zone !== "All" && circle !== "All" && division !== "All" && domain !== "All") {
+                    labelKey = 'inspection_year';
+                }
+                
+                console.log(`Bar chart showing distribution by: ${labelKey}`);
+
+                // Count by the determined level
+                const counts = {};
+                features.forEach(f => {
+                    const key = f.properties[labelKey] || "Unknown";
+                    counts[key] = (counts[key] || 0) + 1;
+                });
+
+                const labels = Object.keys(counts);
+                const data = Object.values(counts);
+                
+                // Use the same colors as the map points for consistency
+                const barColors = labels.map(label => {
+                    if (labelKey === 'zone' || labelKey === 'circle' || labelKey === 'division' || labelKey === 'canal') {
+                        return colorMap[label] || "#AAAAAA";
+                    } else {
+                        // For other categories, use standard colors
+                        return null; // Let Chart.js use default colors
+                    }
+                });
+                
+                // Fallback colors if needed
+                const backgroundColors = barColors.every(c => c === null) ? 
+                    ['#FA6384','#3BA2EB','#FCCE56','#4DC0C0','#99A6FF','#FC9F40','#0FCC99','#FF9999','#66B2FF','#99FF99'] :
+                    barColors;
+
+                if (barChart) barChart.destroy();
+                const barCtx = document.getElementById('barChart').getContext('2d');
+                barChart = new Chart(barCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: `${labelKey.charAt(0).toUpperCase() + labelKey.slice(1).replace('_', ' ')} Distribution`,
+                            data: data,
+                            backgroundColor: backgroundColors
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            datalabels: {
+                                anchor: 'end',
+                                align: 'start',
+                                color: '#000',
+                                font: { weight: 'bold', size: 11 },
+                                formatter: value => value
+                            }
+                        },
+                        scales: {
+                            y: { beginAtZero: true },
+                            x: {
+                                ticks: {
+                                    maxRotation: 45,
+                                    minRotation: 45,
+                                    font: { size: 10 }
+                                }
+                            }
+                        }
+                    },
+                    plugins: [ChartDataLabels]
+                });
+            } catch (error) {
+                console.error("Error updating bar chart:", error);
+            }
+        }
+
+        function zoomToFeatures(features) {
+            try {
+                if (features.length === 0) return;
+                
+                // Create a bounds object to encompass all points
+                const bounds = L.latLngBounds();
+                
+                // Add each feature to the bounds
+                features.forEach(f => {
+                    if (f.geometry && f.geometry.coordinates) {
+                        const coords = f.geometry.coordinates;
+                        // Leaflet uses [lat, lng] while GeoJSON uses [lng, lat]
+                        bounds.extend([coords[1], coords[0]]);
+                    }
+                });
+                
+                // Only fit bounds if we have valid coordinates
+                if (bounds.isValid()) {
+                    console.log("Fitting map to bounds of all features");
+                    map.fitBounds(bounds, { 
+                        padding: [50, 50],
+                        maxZoom: 12  // Prevent excessive zoom on small datasets
+                    });
+                } else {
+                    // Fallback to default view
+                    console.log("Invalid bounds, using default view");
+                    map.setView(initialView.center, initialView.zoom);
+                }
+            } catch (error) {
+                console.error("Error zooming to features:", error);
+                // Fallback to default view on error
+                map.setView(initialView.center, initialView.zoom);
+            }
+        }
+
+        // Dropdown management functions
+        let zones = [...new Set(geoData.features.map(f => f.properties.zone).filter(Boolean))].sort();
+        let circles = [...new Set(geoData.features.map(f => f.properties.circle).filter(Boolean))].sort();
+        let divisions = [...new Set(geoData.features.map(f => f.properties.division).filter(Boolean))].sort();
+        let conditions = [...new Set(geoData.features.map(f => f.properties.condition).filter(Boolean))].sort();
+        let years = [...new Set(geoData.features.map(f => f.properties.inspection_year).filter(Boolean))].sort();
+        let domains = [...new Set(geoData.features.map(f => f.properties.domain).filter(Boolean))].sort();
+        let inspTypes = [...new Set(geoData.features.map(f => f.properties.inspection_type).filter(Boolean))].sort();
+
+        // Log the zones to check for Sargodha
+        console.log("Available zones:", zones);
+
+        function updateOptions(select, items) {
+            const oldVal = select.value;
+            select.innerHTML = '<option value="All">All</option>' + items.map(i => `<option value="${i}">${i}</option>`).join('');
+            if (items.includes(oldVal)) {
+                select.value = oldVal;
+            } else {
+                select.value = 'All';
+            }
+        }
+
+        function filterDropdowns() {
+            try {
+                const zoneVal = zoneSelect.value;
+                let filteredCircles = circles;
+                let filteredDivisions = divisions;
+                let filteredConditions = conditions;
+                let filteredYears = years;
+                let filteredDomains = domains;
+                let filteredInspTypes = inspTypes;
+
+                if (zoneVal !== 'All') {
+                    // Case-insensitive matching for dropdown filters
+                    const zoneValLower = zoneVal.toLowerCase();
+                    const filteredFeatures = geoData.features.filter(f => 
+                        f.properties.zone && f.properties.zone.toLowerCase() === zoneValLower
+                    );
+                    
+                    filteredCircles = [...new Set(filteredFeatures.map(f => f.properties.circle).filter(Boolean))].sort();
+                    filteredDivisions = [...new Set(filteredFeatures.map(f => f.properties.division).filter(Boolean))].sort();
+                    filteredConditions = [...new Set(filteredFeatures.map(f => f.properties.condition).filter(Boolean))].sort();
+                    filteredYears = [...new Set(filteredFeatures.map(f => f.properties.inspection_year).filter(Boolean))].sort();
+                    filteredDomains = [...new Set(filteredFeatures.map(f => f.properties.domain).filter(Boolean))].sort();
+                    filteredInspTypes = [...new Set(filteredFeatures.map(f => f.properties.inspection_type).filter(Boolean))].sort();
+                }
+
+                updateOptions(circleSelect, filteredCircles);
+                updateOptions(divisionSelect, filteredDivisions);
+                updateOptions(conditionSelect, filteredConditions);
+                updateOptions(canalSelect, filteredYears);
+                updateOptions(domainSelect, filteredDomains);
+                updateOptions(inspectionTypeSelect, filteredInspTypes);
+                filterCircles();
+            } catch (error) {
+                console.error("Error filtering dropdowns:", error);
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+
+        function filterCircles() {
+            const zoneVal = zoneSelect.value;
+            const circleVal = circleSelect.value;
+            let filteredDivisions = divisions;
+            let filteredConditions = conditions;
+            let filteredYears = years;
+            let filteredDomains = domains;
+            let filteredInspTypes = inspTypes;
+
+            // Base filter conditions
+            let baseFilter;
+            if (circleVal !== 'All') {
+                // Case-insensitive matching
+                const zoneValLower = zoneVal === 'All' ? null : zoneVal.toLowerCase();
+                const circleValLower = circleVal.toLowerCase();
+                
+                baseFilter = f => 
+                    (zoneVal === 'All' || (f.properties.zone && f.properties.zone.toLowerCase() === zoneValLower)) && 
+                    (f.properties.circle && f.properties.circle.toLowerCase() === circleValLower);
+            } else if (zoneVal !== 'All') {
+                const zoneValLower = zoneVal.toLowerCase();
+                baseFilter = f => f.properties.zone && f.properties.zone.toLowerCase() === zoneValLower;
+            } else {
+                // All selected, no filtering needed
+                updateOptions(divisionSelect, filteredDivisions);
+                updateOptions(conditionSelect, filteredConditions);
+                updateOptions(canalSelect, filteredYears);
+                updateOptions(domainSelect, filteredDomains);
+                updateOptions(inspectionTypeSelect, filteredInspTypes);
+                return;
+            }
+            
+            // Apply the filter
+            const baseFiltered = geoData.features.filter(baseFilter);
+            
+            // Extract unique values
+            filteredDivisions = [...new Set(baseFiltered.map(f => f.properties.division).filter(Boolean))].sort();
+            filteredConditions = [...new Set(baseFiltered.map(f => f.properties.condition).filter(Boolean))].sort();
+            filteredYears = [...new Set(baseFiltered.map(f => f.properties.inspection_year).filter(Boolean))].sort();
+            filteredDomains = [...new Set(baseFiltered.map(f => f.properties.domain).filter(Boolean))].sort();
+            filteredInspTypes = [...new Set(baseFiltered.map(f => f.properties.inspection_type).filter(Boolean))].sort();
+
+            updateOptions(divisionSelect, filteredDivisions);
+            updateOptions(conditionSelect, filteredConditions);
+            updateOptions(canalSelect, filteredYears);
+            updateOptions(domainSelect, filteredDomains);
+            updateOptions(inspectionTypeSelect, filteredInspTypes);
+            filterDivisions();
+        }
+
+        function filterDivisions() {
+            const zoneVal = zoneSelect.value;
+            const circleVal = circleSelect.value;
+            const divisionVal = divisionSelect.value;
+            
+            if (divisionVal === 'All' && circleVal === 'All' && zoneVal === 'All') {
+                // All filters are "All", no need for filtering
+                filterConditions();
+                return;
+            }
+            
+            // Case-insensitive matching
+            const zoneValLower = zoneVal === 'All' ? null : zoneVal.toLowerCase();
+            const circleValLower = circleVal === 'All' ? null : circleVal.toLowerCase();
+            const divisionValLower = divisionVal === 'All' ? null : divisionVal.toLowerCase();
+            
+            // Build filter function
+            const baseFilter = f => 
+                (zoneVal === 'All' || (f.properties.zone && f.properties.zone.toLowerCase() === zoneValLower)) &&
+                (circleVal === 'All' || (f.properties.circle && f.properties.circle.toLowerCase() === circleValLower)) &&
+                (divisionVal === 'All' || (f.properties.division && f.properties.division.toLowerCase() === divisionValLower));
+            
+            // Apply filter
+            const baseFiltered = geoData.features.filter(baseFilter);
+            
+            // Extract values for remaining dropdowns
+            const filteredConditions = [...new Set(baseFiltered.map(f => f.properties.condition).filter(Boolean))].sort();
+            const filteredYears = [...new Set(baseFiltered.map(f => f.properties.inspection_year).filter(Boolean))].sort();
+            const filteredDomains = [...new Set(baseFiltered.map(f => f.properties.domain).filter(Boolean))].sort();
+            const filteredInspTypes = [...new Set(baseFiltered.map(f => f.properties.inspection_type).filter(Boolean))].sort();
+
+            updateOptions(conditionSelect, filteredConditions);
+            updateOptions(canalSelect, filteredYears);
+            updateOptions(domainSelect, filteredDomains);
+            updateOptions(inspectionTypeSelect, filteredInspTypes);
+            filterConditions();
+        }
+
+        function filterConditions() {
+            const zoneVal = zoneSelect.value;
+            const circleVal = circleSelect.value;
+            const divisionVal = divisionSelect.value;
+            const conditionVal = conditionSelect.value;
+            
+            // Case-insensitive matching
+            const zoneValLower = zoneVal === 'All' ? null : zoneVal.toLowerCase();
+            const circleValLower = circleVal === 'All' ? null : circleVal.toLowerCase();
+            const divisionValLower = divisionVal === 'All' ? null : divisionVal.toLowerCase();
+            
+            // Build filter function
+            const baseFilter = f => 
+                (zoneVal === 'All' || (f.properties.zone && f.properties.zone.toLowerCase() === zoneValLower)) &&
+                (circleVal === 'All' || (f.properties.circle && f.properties.circle.toLowerCase() === circleValLower)) &&
+                (divisionVal === 'All' || (f.properties.division && f.properties.division.toLowerCase() === divisionValLower)) &&
+                (conditionVal === 'All' || (f.properties.condition && f.properties.condition === conditionVal));
+            
+            // Apply filter
+            const baseFiltered = geoData.features.filter(baseFilter);
+            
+            // Extract values for remaining dropdowns
+            const filteredYears = [...new Set(baseFiltered.map(f => f.properties.inspection_year).filter(Boolean))].sort();
+            const filteredDomains = [...new Set(baseFiltered.map(f => f.properties.domain).filter(Boolean))].sort();
+            const filteredInspTypes = [...new Set(baseFiltered.map(f => f.properties.inspection_type).filter(Boolean))].sort();
+
+            updateOptions(canalSelect, filteredYears);
+            updateOptions(domainSelect, filteredDomains);
+            updateOptions(inspectionTypeSelect, filteredInspTypes);
+            filterYears();
+        }
+
+        function filterYears() {
+            const zoneVal = zoneSelect.value;
+            const circleVal = circleSelect.value;
+            const divisionVal = divisionSelect.value;
+            const yearVal = canalSelect.value;
+            
+            // Case-insensitive matching
+            const zoneValLower = zoneVal === 'All' ? null : zoneVal.toLowerCase();
+            const circleValLower = circleVal === 'All' ? null : circleVal.toLowerCase();
+            const divisionValLower = divisionVal === 'All' ? null : divisionVal.toLowerCase();
+            
+            // Build filter function
+            const baseFilter = f => 
+                (zoneVal === 'All' || (f.properties.zone && f.properties.zone.toLowerCase() === zoneValLower)) &&
+                (circleVal === 'All' || (f.properties.circle && f.properties.circle.toLowerCase() === circleValLower)) &&
+                (divisionVal === 'All' || (f.properties.division && f.properties.division.toLowerCase() === divisionValLower)) &&
+                (yearVal === 'All' || (f.properties.inspection_year && f.properties.inspection_year === yearVal));
+            
+            // Apply filter
+            const baseFiltered = geoData.features.filter(baseFilter);
+            
+            // Extract values for remaining dropdowns
+            const filteredDomains = [...new Set(baseFiltered.map(f => f.properties.domain).filter(Boolean))].sort();
+            const filteredInspTypes = [...new Set(baseFiltered.map(f => f.properties.inspection_type).filter(Boolean))].sort();
+
+            updateOptions(domainSelect, filteredDomains);
+            updateOptions(inspectionTypeSelect, filteredInspTypes);
+            filterDomains();
+        }
+
+        function filterDomains() {
+            const zoneVal = zoneSelect.value;
+            const circleVal = circleSelect.value;
+            const divisionVal = divisionSelect.value;
+            const yearVal = canalSelect.value;
+            const domainVal = domainSelect.value;
+            
+            const baseFiltered = geoData.features.filter(f => 
+                (zoneVal === 'All' || f.properties.zone === zoneVal) && 
+                (circleVal === 'All' || f.properties.circle === circleVal) &&
+                (divisionVal === 'All' || f.properties.division === divisionVal) &&
+                (yearVal === 'All' || f.properties.inspection_year === yearVal) &&
+                (domainVal === 'All' || f.properties.domain === domainVal)
+            );
+
+            const filteredInspTypes = [...new Set(baseFiltered.map(f => f.properties.inspection_type).filter(Boolean))].sort();
+
+            updateOptions(inspectionTypeSelect, filteredInspTypes);
+            applyFilters();
+        }
+
+        // Simplified approach to applying filters
+        function applyFilters() {
+            try {
+                const zone = zoneSelect.value;
+                const circle = circleSelect.value;
+                const division = divisionSelect.value;
+                const condition = conditionSelect.value;
+                const year = canalSelect.value;
+                const domain = domainSelect.value;
+                const inspType = inspectionTypeSelect.value;
+
+                console.log("Applying filters:", {zone, circle, division, condition, year, domain, inspType});
+                
+                // Update color map based on current filter level
+                updateColorMap();
+                
+                // IMPORTANT: Always make a copy of all features first - this ensures we start with the full dataset
+                const allFeatures = [...geoData.features];
+                console.log(`Starting with all ${allFeatures.length} features`);
+
+                // If all filters are "All", use all features
+                const isAllFilters = zone === "All" && circle === "All" && division === "All" && condition === "All" && 
+                                     year === "All" && domain === "All" && inspType === "All";
+                
+                let filtered;
+                if (isAllFilters) {
+                    console.log("All filters are 'All', using all features");
+                    filtered = allFeatures;
+                } else {
+                    // Filter the features based on selections - using case-insensitive matching
+                    filtered = allFeatures.filter(f => {
+                        const props = f.properties;
+                        
+                        // Case-insensitive matching for text fields
+                        const zoneMatch = zone === "All" || 
+                            (props.zone && props.zone.toLowerCase() === zone.toLowerCase());
+                            
+                        const circleMatch = circle === "All" || 
+                            (props.circle && props.circle.toLowerCase() === circle.toLowerCase());
+                            
+                        const divisionMatch = division === "All" || 
+                            (props.division && props.division.toLowerCase() === division.toLowerCase());
+                            
+                        // Ensure case-insensitive matching for condition too, but check if it exists first
+                        const conditionMatch = condition === "All" || 
+                            (props.condition && props.condition.toLowerCase() === condition.toLowerCase());
+                            
+                        // Regular matching for other fields
+                        const yearMatch = year === "All" || 
+                            (props.inspection_year && props.inspection_year === year);
+                            
+                        const domainMatch = domain === "All" || 
+                            (props.domain && props.domain === domain);
+                            
+                        const typeMatch = inspType === "All" || 
+                            (props.inspection_type && props.inspection_type === inspType);
+                        
+                        return zoneMatch && circleMatch && divisionMatch && conditionMatch && yearMatch && domainMatch && typeMatch;
+                    });
+                }
+
+                console.log(`Filtered to ${filtered.length} features out of ${geoData.features.length}`);
+                
+                // Update feature count display
+                document.getElementById('featureCount').textContent = `${filtered.length} of ${geoData.features.length} Records`;
+                
+                // Remove existing layer if it exists
+                if (layerGroup) {
+                    map.removeLayer(layerGroup);
+                }
+                
+                if (filtered.length === 0) {
+                    console.log("No features match the current filters");
+                    document.getElementById('error-message').textContent = "No inspection records match the selected filters.";
+                    document.getElementById('error-message').style.display = "block";
+                    return;
+                } else {
+                    document.getElementById('error-message').style.display = "none";
+                }
+                
+                // Count Closure inspections
+                const closureCount = filtered.filter(f => 
+                    f.properties.inspection_type && 
+                    f.properties.inspection_type.includes("Closure")
+                ).length;
+                
+                console.log(`Found ${closureCount} Closure inspection points`);
+                
+                // Create a collection of features to add to the map
+                const featureCollection = {
+                    "type": "FeatureCollection",
+                    "features": filtered
+                };
+                
+                // Add the new layer with the filtered features
+                layerGroup = L.geoJSON(featureCollection, {
+                    pointToLayer: (f, latlng) => L.circleMarker(latlng, style(f)),
+                    onEachFeature: onEachFeature
+                }).addTo(map);
+                console.log("Added filtered features to map");
+
+                // Update charts with the filtered data
+                updatePlotlyPieChart(filtered);
+                updateBarChart(filtered);
+                
+                // Update legend with current filters
+                createLegend();
+                
+                // Zoom to show all filtered features
+                if (filtered.length > 0) {
+                    zoomToFeatures(filtered);
+                }
+                
+                // Ensure loading spinner is hidden
+                document.getElementById('loading').style.display = 'none';
+                
+            } catch (error) {
+                console.error("Error applying filters:", error);
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('error-message').textContent = "Error applying filters: " + error.message;
+                document.getElementById('error-message').style.display = "block";
+                
+                // Fallback - try direct approach
+                try {
+                    if (layerGroup) map.removeLayer(layerGroup);
+                    layerGroup = L.geoJSON(geoData, {
+                        pointToLayer: (f, latlng) => L.circleMarker(latlng, style(f)),
+                        onEachFeature: onEachFeature
+                    }).addTo(map);
+                    zoomToFeatures(geoData.features);
+                } catch (e) {
+                    console.error("Fallback rendering also failed:", e);
+                }
+            }
+        }
+
+        const zoneSelect = document.getElementById('zoneSelect');
+        const circleSelect = document.getElementById('circleSelect');
+        const divisionSelect = document.getElementById('divisionSelect');
+        const conditionSelect = document.getElementById('conditionSelect');
+        const canalSelect = document.getElementById('canalSelect');
+        const domainSelect = document.getElementById('domainSelect');
+        const inspectionTypeSelect = document.getElementById('inspectionTypeSelect');
+
+        zoneSelect.addEventListener('change', () => {
+            filterDropdowns();
+        });
+        circleSelect.addEventListener('change', () => {
+            filterCircles();
+        });
+        divisionSelect.addEventListener('change', () => {
+            filterDivisions();
+        });
+        conditionSelect.addEventListener('change', () => {
+            filterConditions();
+        });
+        canalSelect.addEventListener('change', () => {
+            filterYears();
+        });
+        domainSelect.addEventListener('change', () => {
+            filterDomains();
+        });
+        inspectionTypeSelect.addEventListener('change', () => {
+            applyFilters();
+        });
+
+        // Create and update the legend
+        let legend;
+        
+        function createLegend() {
+            // Remove existing legend if it exists
+            if (legend) {
+                map.removeControl(legend);
+            }
+            
+            // Create legend control
+            legend = L.control({position: 'bottomright'});
+            
+            legend.onAdd = function (map) {
+                const div = L.DomUtil.create('div', 'info legend');
+                div.style.backgroundColor = "white";
+                div.style.padding = "10px";
+                div.style.borderRadius = "5px";
+                div.style.boxShadow = "0 1px 5px rgba(0,0,0,0.4)";
+                div.style.maxHeight = "300px";
+                div.style.overflowY = "auto";
+                
+                // Special color for Closure
+            
+                // Add current filter level colors
+                const level = getActiveFilterLevel();
+                div.innerHTML += `<h4 style="margin: 0 0 5px 0;">${level.charAt(0).toUpperCase() + level.slice(1)}</h4>`;
+                
+                // Add entries for each color in the color map
+                Object.entries(colorMap).forEach(([key, color]) => {
+                    div.innerHTML += `<div><i style="background:${color}"></i> ${key}</div>`;
+                });
+                
+                // CSS for the color squares
+                const squares = div.querySelectorAll('i');
+                squares.forEach(sq => {
+                    sq.style.display = 'inline-block';
+                    sq.style.width = '16px';
+                    sq.style.height = '16px';
+                    sq.style.marginRight = '5px';
+                    sq.style.opacity = '0.8';
+                    sq.style.verticalAlign = 'middle';
+                });
+                
+                return div;
+            };
+            
+            legend.addTo(map);
+        }
+        
+        // Initialize the map
+        try {
+            console.log("Starting map initialization with", geoData.features.length, "features");
+            
+            // Display initial feature count
+            const totalCount = geoData.features.length;
+            document.getElementById('featureCount').textContent = `${totalCount} Inspection Records`;
+            
+            // Before rendering, log the first few records to debug zone issues
+            console.log("Sample data from first 3 records:");
+            for (let i = 0; i < Math.min(3, geoData.features.length); i++) {
+                console.log(`Record ${i}: Zone=${geoData.features[i].properties.zone}, Circle=${geoData.features[i].properties.circle}`);
+            }
+            
+            // Check for Sargodha in data
+            const sargodhaCount = geoData.features.filter(f => 
+                f.properties.zone && f.properties.zone.toLowerCase().includes('sargodha')
+            ).length;
+            console.log(`Found ${sargodhaCount} records with Sargodha in zone`);
+            
+            // First apply all data without filtering
+            if (layerGroup) {
+                map.removeLayer(layerGroup);
+            }
+            
+            // Initialize color map before adding points
+            updateColorMap();
+            console.log("Initial color map created:", Object.keys(colorMap).length, "colors assigned");
+            
+            // Create points for all features first - this ensures all points are displayed initially
+            console.log("Adding all points to map");
+            layerGroup = L.geoJSON(geoData, {
+                pointToLayer: (f, latlng) => L.circleMarker(latlng, style(f)),
+                onEachFeature: onEachFeature
+            }).addTo(map);
+            
+            // Zoom to show all points
+            zoomToFeatures(geoData.features);
+            
+            // Now setup filters and UI
+            filterDropdowns();
+            
+            // Initialize charts with all data
+            updatePlotlyPieChart(geoData.features);
+            updateBarChart(geoData.features);
+            
+            // Create legend for domain colors
+            createLegend();
+            
+            // Ensure loading spinner is hidden after map initialization
+            document.getElementById('loading').style.display = 'none';
+            
+        } catch (error) {
+            console.error("Error initializing map:", error);
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('error-message').textContent = "Error initializing map: " + error.message;
+            document.getElementById('error-message').style.display = "block";
+        }
+        
+        // Ensure loading spinner is hidden after a timeout as a final fallback
+        setTimeout(function() {
+            document.getElementById('loading').style.display = 'none';
+            console.log("Loading spinner hidden by final fallback");
+        }, 5000);
+
+        // Add event listeners for chart tabs
+        document.querySelectorAll('.chart-tab').forEach(tab => {
+            tab.addEventListener('click', function() {
+                // Remove active class from all tabs
+                document.querySelectorAll('.chart-tab').forEach(t => {
+                    t.classList.remove('active');
+                });
+                
+                // Add active class to clicked tab
+                this.classList.add('active');
+                
+                // Re-render pie chart with current features
+                if (layerGroup) {
+                    const currentFeatures = [];
+                    layerGroup.eachLayer(layer => {
+                        if (layer.feature) {
+                            currentFeatures.push(layer.feature);
+                        }
+                    });
+                    updatePlotlyPieChart(currentFeatures);
+                } else {
+                    // Fallback to all features if no layer group
+                    updatePlotlyPieChart(geoData.features);
+                }
+            });
+        });
+    </script>
+</body>
+</html> 

@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {% load static %}
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Punjab Irrigation Department - GIS Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary-color: #056839;
+            --secondary-color: #4fc965;
+            --background-color: #f4f4f4;
+            --text-color: #333333;
+            --card-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            --hover-shadow: 0 8px 16px rgba(0,0,0,0.2);
+            --accent-color: #e6f7ec;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        @keyframes slideInLeft {
+            from { opacity: 0; transform: translateX(-50px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        
+        @keyframes slideInRight {
+            from { opacity: 0; transform: translateX(50px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        
+        @keyframes float {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+            100% { transform: translateY(0px); }
+        }
+        
+        @keyframes gradientBg {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background-color: var(--background-color);
+            color: var(--text-color);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #056839 0%, #278827 50%, #0c3a24 100%);
+            background-size: 200% 200%;
+            animation: gradientBg 5s ease infinite;
+            color: white;
+            padding: 1.5rem 0;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .logo-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 100%;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 1rem;
+        }
+        
+        .logo-left, .logo-right {
+            max-height: 200px;
+            width: 200px;
+            max-width: 120px;
+            margin: 0 2vw;
+            filter: drop-shadow(0px 10px 20px rgba(238, 233, 233, 0.85));
+        }
+        
+        .logo-left {
+            animation: slideInLeft 1s ease-out;
+            filter: drop-shadow(0px 0px 0px rgba(228, 225, 225, 0.95));
+        }
+        
+        .logo-right {
+            animation: slideInRight 1s ease-out;
+        }
+        
+        .header-content {
+            flex: 1 1 0;
+            text-align: center;
+            animation: fadeIn 1s ease-out;
+            min-width: 0;
+        }
+        
+        .header h1 {
+            font-size: 2.3rem;
+            margin-bottom: 0.5rem;
+            text-shadow: 2px 2px 4px rgba(17, 15, 15, 0.3);
+            letter-spacing: 1px;
+        }
+        
+        .header p {
+            font-size: 1.3rem;
+            opacity: 0.9;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 2rem auto;
+            padding: 0 1rem;
+            animation: fadeIn 1s ease-out 0.3s both;
+        }
+        
+        .intro-section {
+            background: rgb(183, 240, 208);
+            padding: 2.5rem;
+            border-radius: 12px;
+            box-shadow: var(--card-shadow);
+            margin-bottom: 2.5rem;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+            animation: fadeIn 1s ease-out 0.6s both;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        
+        .intro-section:hover {
+            transform: translateY(-5px);
+            box-shadow: var(--hover-shadow);
+        }
+        
+        .intro-section::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 1px;
+            background: linear-gradient(to right, var(--primary-color), var(--secondary-color));
+        }
+        
+        .intro-section h2 {
+            color: var(--primary-color);
+            margin-bottom: 1.2rem;
+            font-size: 2.2rem;
+            position: relative;
+            display: inline-block;
+        }
+        
+        .intro-section h2::after {
+            content: "";
+            display: block;
+            width: 60%;
+            height: 3px;
+            background: var(--secondary-color);
+            margin: 0.5rem auto 0;
+            border-radius: 2px;
+        }
+        
+        .intro-section p {
+            margin-bottom: 1.2rem;
+            font-size: 1.15rem;
+            color: #555;
+            max-width: 900px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        
+        .stats-container {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.5rem;
+            margin-bottom: 2.5rem;
+            animation: fadeIn 1s ease-out 0.9s both;
+        }
+        
+        .stat-card {
+            background: rgb(183, 240, 208);
+            border-radius: 30px;
+            padding: 2rem 1.5rem;
+            text-align: center;
+            box-shadow: var(--card-shadow);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+            border: 1px solid rgba(5, 104, 57, 0.1);
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-7px);
+            box-shadow: var(--hover-shadow);
+        }
+        
+        .stat-card:nth-child(1) {
+            animation: float 6s ease-in-out infinite;
+        }
+        
+        .stat-card:nth-child(2) {
+            animation: float 7s ease-in-out 0.5s infinite;
+        }
+        
+        .stat-card:nth-child(3) {
+            animation: float 8s ease-in-out 1s infinite;
+        }
+        
+        .stat-card::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at top right, var(--accent-color), transparent 70%);
+            opacity: 0.6;
+            z-index: 0;
+        }
+        
+        .stat-card i {
+            font-size: 3rem;
+            color: var(--primary-color);
+            margin-bottom: 1.2rem;
+            position: relative;
+            z-index: 1;
+            filter: drop-shadow(2px 4px 6px rgba(0,0,0,0.1));
+        }
+        
+        .stat-card h3 {
+            font-size: 2.5rem;
+            color: var(--primary-color);
+            margin-bottom: 0.6rem;
+            position: relative;
+            z-index: 1;
+            font-weight: 700;
+        }
+        
+        .stat-card p {
+            font-size: 1.1rem;
+            color: var(--text-color);
+            position: relative;
+            z-index: 1;
+            font-weight: 500;
+        }
+        
+        .charts-section {
+            background: white;
+            padding: 2.5rem;
+            border-radius: 12px;
+            box-shadow: var(--card-shadow);
+            margin-bottom: 2.5rem;
+            animation: fadeIn 1s ease-out 1.2s both;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .charts-section::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 100%;
+            height: 5px;
+            background: linear-gradient(to right, var(--secondary-color), var(--primary-color));
+        }
+        
+        .charts-section h2 {
+            color: var(--primary-color);
+            margin-bottom: 1.8rem;
+            text-align: center;
+            font-size: 2.2rem;
+            position: relative;
+            display: inline-block;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+        
+        .charts-section h2::after {
+            content: "";
+            display: block;
+            width: 60%;
+            height: 3px;
+            background: var(--secondary-color);
+            margin: 0.5rem auto 0;
+            border-radius: 2px;
+        }
+        
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2.5rem;
+        }
+        
+        .chart-container {
+            height: 350px;
+            margin-bottom: 1rem;
+            position: relative;
+            transition: all 0.3s ease;
+        }
+        
+        .chart-container:hover {
+            transform: scale(1.02);
+        }
+        
+        .feature-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2.5rem;
+            margin-bottom: 2.5rem;
+            animation: fadeIn 1s ease-out 1.5s both;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: var(--card-shadow);
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            position: relative;
+            border: 1px solid rgba(5, 104, 57, 0.1);
+        }
+        
+        .card:hover {
+            transform: translateY(-15px);
+            box-shadow: var(--hover-shadow);
+        }
+        
+        .card-header {
+            background: linear-gradient(135deg, var(--primary-color) 0%, #078149 100%);
+            color: white;
+            padding: 1.5rem 1rem;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .card-header::after {
+            content: "";
+            position: absolute;
+            width: 150%;
+            height: 200%;
+            background: rgba(255,255,255,0.1);
+            transform: rotate(45deg);
+            left: -50%;
+            top: -50%;
+            transition: all 0.5s ease;
+        }
+        
+        .card:hover .card-header::after {
+            left: 100%;
+        }
+        
+        .card-header h3 {
+            font-size: 1.6rem;
+            position: relative;
+            z-index: 1;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
+        }
+        
+        .card-body {
+            padding: 2rem 1.8rem;
+        }
+        
+        .card-body p {
+            margin-bottom: 1.2rem;
+            color: #555;
+            font-size: 1.05rem;
+        }
+        
+        .btn {
+            display: inline-block;
+            background: linear-gradient(135deg, var(--primary-color) 0%, #078149 100%);
+            color: white;
+            padding: 0.9rem 1.8rem;
+            border-radius: 30px;
+            text-decoration: none;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            margin-top: 1rem;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(5, 104, 57, 0.3);
+            border: none;
+            cursor: pointer;
+            letter-spacing: 0.5px;
+        }
+        
+        .btn::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(
+                135deg,
+                rgba(255, 255, 255, 0.3) 0%,
+                rgba(255, 255, 255, 0) 100%
+            );
+            transition: all 0.6s ease;
+        }
+        
+        .btn:hover {
+            background: linear-gradient(135deg, #078149 0%, var(--primary-color) 100%);
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(5, 104, 57, 0.4);
+        }
+        
+        .btn:hover::before {
+            left: 100%;
+        }
+        
+        .btn i {
+            margin-left: 8px;
+            transition: transform 0.3s ease;
+        }
+        
+        .btn:hover i {
+            transform: translateX(4px);
+        }
+        
+        .footer {
+            background: linear-gradient(135deg, #056839 0%, #078149 100%);
+            color: white;
+            text-align: center;
+            padding: 2rem 0;
+            margin-top: 3rem;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .footer::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 5px;
+            background: linear-gradient(to right, rgba(255,255,255,0.5), transparent);
+        }
+        
+        .footer p {
+            font-size: 1.1rem;
+            position: relative;
+            z-index: 2;
+        }
+        
+        .wave {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 50px;
+            background: url('data:image/svg+xml;utf8,<svg viewBox="0 0 1200 120" xmlns="http://www.w3.org/2000/svg"><path d="M0 0v46.29c47.79 22.2 103.59 32.17 158 28 70.36-5.37 136.33-33.31 206.8-37.5 73.84-4.36 147.54 16.88 218.2 35.26 69.27 18.17 138.3 24.88 209.4 13.08 36.15-6 69.85-17.84 104.45-29.34C989.49 25 1113-14.29 1200 52.47V0z" fill="%23FFFFFF" fill-opacity="0.1"/></svg>');
+            background-size: cover;
+            background-repeat: no-repeat;
+        }
+        
+        @media (max-width: 992px) {
+            .header h1 {
+                font-size: 2.2rem;
+            }
+            
+            .header p {
+                font-size: 1.1rem;
+            }
+            
+            .logo-left, .logo-right {
+                max-height: 80px;
+            }
+            
+            .header-content {
+                width: 70%;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .stats-container {
+                grid-template-columns: 1fr;
+            }
+            
+            .header h1 {
+                font-size: 1.8rem;
+            }
+            
+            .header p {
+                font-size: 1rem;
+                padding: 0 1rem;
+            }
+            
+            .logo-left, .logo-right {
+                max-height: 60px;
+            }
+            
+            .header-content {
+                width: 80%;
+                padding: 0 60px;
+            }
+            
+            .intro-section h2,
+            .charts-section h2 {
+                font-size: 1.8rem;
+            }
+            
+            .intro-section p {
+                font-size: 1rem;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .logo-left, .logo-right {
+                max-height: 50px;
+            }
+            
+            .header-content {
+                width: 100%;
+                padding: 0 50px;
+            }
+            
+            .header h1 {
+                font-size: 1 rem;
+            }
+        }
+        
+        .nowrap-heading {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            font-size: 1.5rem;
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="logo-container">
+            <!-- Logo on the left -->
+            <img src="{% static 'hello/punjab.png' %}" alt="Punjab Irrigation Department Logo" class="logo-left">
+            <div class="header-content">
+                <h1 class="nowrap-heading">Hydraulic Structures Safety Evaluation Unit </br> (HSSEU)</h1>
+            </div>
+            <!-- Logo on the right -->
+            <img src="{% static 'hello/logo.png' %}" alt="HSSEU Logo" class="logo-right">
+        </div>
+    </header>
+    
+    <div class="container">
+        <section class="intro-section">
+            <h2>Welcome to the GIS Mapping System</h2>
+            <p>This interactive mapping platform provides comprehensive visualization of irrigation structures and inspection data across Punjab province.</p>
+                    </section>
+        
+        <div class="stats-container">
+            <div class="stat-card">
+                <i class="fas fa-map-marked-alt"></i>
+                <h3>5,000+</h3>
+                <p>Structure Mapped</p>
+            </div>
+            <div class="stat-card">
+                <i class="fas fa-clipboard-check"></i>
+                <h3>5,500+</h3>
+                <p>Inspection Record</p>
+            </div>
+            <div class="stat-card">
+                <img src="{% static 'hello/canal.svg' %}" alt="Canal Icon" style="width: 3rem; height: 3rem; margin-bottom: 1.2rem; filter: drop-shadow(2px 4px 6px rgba(0,0,0,0.1)); color: var(--primary-color);">
+                <h3>150+</h3>
+                <p>Canal's Structure Geo Tag</p>
+            </div>
+            <div class="stat-card">
+                <img src="{% static 'hello/drone.svg' %}" alt="Drone Icon" style="width: 3rem; height: 3rem; margin-bottom: 1.2rem; filter: drop-shadow(2px 4px 6px rgba(0,0,0,0.1)); color: var(--primary-color);">
+                <h3>25,000+</h3>
+                <p>Acre Drone Surveyed</p>
+            </div>
+            <div class="stat-card">
+                <i class="fas fa-water"></i>
+                <h3>350+</h3>
+                <p>Bathymetric Cross Sections</p>
+            </div>
+            <div class="stat-card">
+                <i class="fas fa-cloud-upload-alt"></i>
+                <h3>Digital</h3>
+                <p>All Inspection Report Onlined</p>
+            </div>
+        </div>
+        
+        <section class="charts-section">
+            <h2>Data Overview</h2>
+            <div class="charts-grid">
+                <div class="chart-container">
+                    <div id="domainPieChart" style="width: 100%; height: 100%;"></div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="zoneBarChart"></canvas>
+                </div>
+                <div class="chart-container">
+                    <div id="structurePieChart" style="width: 100%; height: 100%;"></div>
+                </div>
+            </div>
+        </section>
+        
+        <div class="feature-cards">
+            <div class="card">
+                <div class="card-header">
+                    <h3>Main Canal's Allied Structures Map</h3>
+                </div>
+                <div class="card-body">
+                    <p>Interactive map showing all Main Canal Allied structures across Punjab. Filter by zone, circle, division, and canal.</p>
+                    <a href="/map/" class="btn">Open Map <i class="fas fa-arrow-right"></i></a>
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="card-header">
+                    <h3>Inspection Data (2022-2025) Map</h3>
+                </div>
+                <div class="card-body">
+                    <p>Visualize inspection records and findings. Filter by zone, circle, division, year, domain, and inspection type.</p>
+                    <a href="/inspection-map/" class="btn">Open Map <i class="fas fa-arrow-right"></i></a>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <footer class="footer">
+        <div class="wave"></div>
+        <p>&copy; 2024 All rights reserved by <span style="color: #b7f0d0; font-weight: bold;">AMJ</span> at <a href="https://risersoltech.com/" target="_blank" style="color: #b7f0d0; font-weight: bold;">RiserSol</a></p>
+    </footer>
+    
+    <script>
+        // Fetch JSON data for the charts
+        document.addEventListener('DOMContentLoaded', function() {
+            // Fetch GeoJSON data from the inspection map endpoint
+            fetch('/inspection-map/')
+                .then(response => {
+                    // Extract GeoJSON string from HTML response
+                    return response.text();
+                })
+                .then(htmlText => {
+                    // Extract the GeoJSON data from the HTML
+                    const geoJsonMatch = htmlText.match(/geoData = JSON\.parse\('([^']+)'\)/);
+                    if (geoJsonMatch && geoJsonMatch[1]) {
+                        const geoJsonStr = geoJsonMatch[1];
+                        // Replace escaped quotes and parse JSON
+                        const geoJson = JSON.parse(geoJsonStr.replace(/\\'/g, "'").replace(/\\"/g, '"'));
+                        
+                        // Create domain pie chart
+                        createDomainPieChart(geoJson.features);
+                        
+                        // Create zone bar chart
+                        createZoneBarChart(geoJson.features);
+                    }
+                    
+                    // Now fetch structure data from the map endpoint
+                    return fetch('/map/');
+                })
+                .then(response => {
+                    return response.text();
+                })
+                .then(htmlText => {
+                    // Extract the GeoJSON data from the HTML
+                    const geoJsonMatch = htmlText.match(/geoData = JSON\.parse\('([^']+)'\)/);
+                    if (geoJsonMatch && geoJsonMatch[1]) {
+                        const geoJsonStr = geoJsonMatch[1];
+                        // Replace escaped quotes and parse JSON
+                        const geoJson = JSON.parse(geoJsonStr.replace(/\\'/g, "'").replace(/\\"/g, '"'));
+                        
+                        // Create structure type pie chart
+                        createStructurePieChart(geoJson.features);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching data:', error);
+                    // Fallback to sample data if fetch fails
+                    createSampleCharts();
+                });
+        });
+        
+        // Function to create Domain Pie Chart with real data
+        function createDomainPieChart(features) {
+            // Count domains
+            const domainCounts = {};
+            features.forEach(f => {
+                // Normalize domain names to match the three main categories
+                let domain = f.properties.domain || "Unknown";
+                if (domain.toLowerCase().includes('civil')) {
+                    domain = 'Civil';
+                } else if (domain.toLowerCase().includes('mech')) {
+                    domain = 'Mechanical';
+                } else if (domain.toLowerCase().includes('e&i') || domain.toLowerCase().includes('electrical')) {
+                    domain = 'E&I';
+                }
+                domainCounts[domain] = (domainCounts[domain] || 0) + 1;
+            });
+            
+            const labels = Object.keys(domainCounts);
+            const values = Object.values(domainCounts);
+            const colors = ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40', '#00CC99'];
+            
+            // Create labels with counts
+            const labelsWithCounts = labels.map((label, i) => `${label} (${values[i]})`);
+            
+            var pieData = [{
+                values: values,
+                labels: labelsWithCounts,
+                type: 'pie',
+                hole: 0.4,
+                marker: {
+                    colors: colors.slice(0, labels.length)
+                },
+                textinfo: 'label',
+                textposition: 'inside',
+                insidetextorientation: 'radial'
+            }];
+            
+            var pieLayout = {
+                title: {
+                    text: 'Domain Wise Inspection',
+                    font: { size: 16, color: '#056839' }
+                },
+                showlegend: false,
+                margin: { t: 40, b: 0, l: 0, r: 0 }
+            };
+            
+            Plotly.newPlot('domainPieChart', pieData, pieLayout, {responsive: true, displayModeBar: false});
+        }
+        
+        // Function to create Zone Bar Chart with real data
+        function createZoneBarChart(features) {
+            // Count by zone
+            const zoneCounts = {};
+            features.forEach(f => {
+                const zone = f.properties.zone || "Unknown";
+                zoneCounts[zone] = (zoneCounts[zone] || 0) + 1;
+            });
+            
+            // Ensure we have all zones (even if not in the current data)
+            const allZones = ['Faisalabad', 'Sargodha', 'Lahore', 'Multan', 'Bahawalpur', 'D.G Khan'];
+            allZones.forEach(zone => {
+                if (!zoneCounts[zone]) zoneCounts[zone] = 0;
+            });
+            
+            const labels = Object.keys(zoneCounts).sort();
+            const data = labels.map(label => zoneCounts[label]);
+            const backgroundColors = ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40', '#00CC99'];
+            
+            var barCtx = document.getElementById('zoneBarChart').getContext('2d');
+            var barChart = new Chart(barCtx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Inspections by Zone',
+                        data: data,
+                        backgroundColor: backgroundColors.slice(0, labels.length),
+                        borderColor: backgroundColors.slice(0, labels.length),
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: {
+                        duration: 2000,
+                        easing: 'easeOutQuart'
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Number of Inspections'
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Zone'
+                            }
+                        }
+                    },
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Inspections by Zone',
+                            font: {
+                                size: 16,
+                                color: '#056839'
+                            }
+                        },
+                        legend: {
+                            display: false
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Function to create Structure Type Pie Chart with real data
+        function createStructurePieChart(features) {
+            // Count structure types
+            const typeCounts = {};
+            features.forEach(f => {
+                const type = f.properties.type || "Unknown";
+                typeCounts[type] = (typeCounts[type] || 0) + 1;
+            });
+            
+            const labels = Object.keys(typeCounts);
+            const values = Object.values(typeCounts);
+            const colors = ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40', '#00CC99'];
+            
+            // Create labels with counts
+            const labelsWithCounts = labels.map((label, i) => `${label} (${values[i]})`);
+            
+            var pieData = [{
+                values: values,
+                labels: labelsWithCounts,
+                type: 'pie',
+                hole: 0.4,
+                marker: {
+                    colors: colors.slice(0, labels.length)
+                },
+                textinfo: 'label',
+                textposition: 'inside',
+                insidetextorientation: 'radial'
+            }];
+            
+            var pieLayout = {
+                title: {
+                    text: 'Structure Types Distribution',
+                    font: { size: 16, color: '#056839' }
+                },
+                showlegend: false,
+                margin: { t: 40, b: 0, l: 0, r: 0 }
+            };
+            
+            Plotly.newPlot('structurePieChart', pieData, pieLayout, {responsive: true, displayModeBar: false});
+        }
+        
+        // Fallback function to create sample charts if fetching real data fails
+        function createSampleCharts() {
+            // Pie chart for domains (inspection map data) - Updated to only 3 domains
+            const domainValues = [40, 35, 25];
+            const domainLabels = ['Civil', 'Mechanical', 'E&I'];
+            const domainLabelsWithCounts = domainLabels.map((label, i) => `${label} (${domainValues[i]})`);
+            
+            var domainPieData = [{
+                values: domainValues,
+                labels: domainLabelsWithCounts,
+                type: 'pie',
+                hole: 0.4,
+                marker: {
+                    colors: ['#FF6384', '#36A2EB', '#FFCE56']
+                },
+                textinfo: 'label',
+                textposition: 'inside',
+                insidetextorientation: 'radial'
+            }];
+            
+            var domainPieLayout = {
+                title: {
+                    text: 'Domain Wise Inspection',
+                    font: { size: 16, color: '#056839' }
+                },
+                showlegend: false,
+                margin: { t: 40, b: 0, l: 0, r: 0 }
+            };
+            
+            Plotly.newPlot('domainPieChart', domainPieData, domainPieLayout, {responsive: true, displayModeBar: false});
+            
+            // Bar chart for zones (inspection data) - Ensure all zones are included
+            var barCtx = document.getElementById('zoneBarChart').getContext('2d');
+            var barChart = new Chart(barCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['Faisalabad', 'Sargodha', 'Lahore', 'Multan', 'Bahawalpur', 'D.G Khan'],
+                    datasets: [{
+                        label: 'Inspections by Zone',
+                        data: [850, 760, 680, 540, 370, 290],
+                        backgroundColor: [
+                            '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40'
+                        ],
+                        borderColor: [
+                            '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: {
+                        duration: 2000,
+                        easing: 'easeOutQuart'
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Number of Inspections'
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Zone'
+                            }
+                        }
+                    },
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Inspections by Zone',
+                            font: {
+                                size: 16,
+                                color: '#056839'
+                            }
+                        },
+                        legend: {
+                            display: false
+                        }
+                    }
+                }
+            });
+            
+            // Pie chart for structure types (map data) - Changed to show values with labels
+            const structureValues = [30, 25, 20, 15, 10];
+            const structureLabels = ['Regulators', 'Bridges', 'Outlet Structures', 'Falls', 'Other'];
+            const structureLabelsWithCounts = structureLabels.map((label, i) => `${label} (${structureValues[i]})`);
+            
+            var structurePieData = [{
+                values: structureValues,
+                labels: structureLabelsWithCounts,
+                type: 'pie',
+                hole: 0.4,
+                marker: {
+                    colors: ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF']
+                },
+                textinfo: 'label',
+                textposition: 'inside',
+                insidetextorientation: 'radial'
+            }];
+            
+            var structurePieLayout = {
+                title: {
+                    text: 'Structure Types Distribution',
+                    font: { size: 16, color: '#056839' }
+                },
+                showlegend: false,
+                margin: { t: 40, b: 0, l: 0, r: 0 }
+            };
+            
+            Plotly.newPlot('structurePieChart', structurePieData, structurePieLayout, {responsive: true, displayModeBar: false});
+        }
+    </script>
+</body>
+</html> 

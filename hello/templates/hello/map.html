@@ -1,0 +1,978 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Allied Structures Map</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Use newer Leaflet version with crossorigin attribute -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        body { margin: 0; padding: 0; font-family: sans-serif; overflow: hidden; }
+        #map { 
+            width: 60%; 
+            height: 100vh; 
+            float: left; 
+            position: relative;
+            z-index: 1;
+            box-sizing: border-box;
+            transition: width 0.3s ease, margin-left 0.3s ease;
+        }
+        #map.expanded-left {
+            width: 80%;
+            margin-left: 0;
+        }
+        #sidebar {
+            width: 20%; 
+            height: 100vh; 
+            float: right;
+            overflow: auto; 
+            padding: 15px;
+            padding-top: 0px;
+            background: #f4f4f4;
+            box-sizing: border-box;
+            position: fixed;
+            right: 0;
+            top: 0;
+        }
+        #left-sidebar {
+            width: 20%;
+            height: 100vh;
+            float: left;
+            overflow-y: auto;
+            padding: 15px;
+            background: #f4f4f4;
+            box-sizing: border-box;
+            transition: width 0.3s ease, margin-left 0.3s ease;
+            z-index: 2;
+        }
+        #left-sidebar.hidden {
+            width: 0;
+            padding: 0;
+            margin-left: -20px;
+        }
+        #toggleLeftButton {
+            position: absolute;
+            left: 20%;
+            top: 50%;
+            z-index: 1000;
+            background: #056839;
+            color: white;
+            border: none;
+            border-radius: 0 4px 4px 0;
+            width: 20px;
+            height: 40px;
+            cursor: pointer;
+            font-size: 14px;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+            transition: left 0.3s ease;
+        }
+        #toggleLeftButton.hidden {
+            left: 0;
+        }
+        #loading {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(255, 255, 255, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+        .spinner {
+            border: 6px solid #f3f3f3;
+            border-top: 6px solid #3498db;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        #error-message {
+            background-color: #ffebee;
+            color: #c62828;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            border-left: 4px solid #c62828;
+            display: none;
+            position: fixed;
+            top: 50px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 2000;
+            max-width: 80%;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            font-weight: bold;
+        }
+        .leaflet-control-zoom {
+            position: absolute !important;
+            bottom: 20px !important;
+            left: 10px !important;
+            top: auto !important;
+        }
+        #homeButton {
+            position: absolute !important;
+            top: 10px !important;
+            left: 10px !important;
+            z-index: 1000;
+            background: #4fc965;
+            border: 2px solid rgba(0,0,0,0.2);
+            border-radius: 8px;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 16px;
+            color: #333;
+            box-shadow: 0 1px 5px rgba(0,0,0,0.65);
+        }
+        #homeButton:hover {
+            background: #f4f4f4;
+        }
+        #clearFiltersButton {
+            background: #056839;
+            border: 2px solid #ffffff;
+            border-radius: 35px;
+            width: auto;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: bold;
+            color: white;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+            margin-top: 15px;
+            transition: all 0.3s ease;
+            padding: 0 12px;
+            letter-spacing: 0.5px;
+        }
+        #clearFiltersButton:hover {
+            background: #078149;
+            transform: scale(1.05);
+            box-shadow: 0 3px 7px rgba(0,0,0,0.4);
+        }
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            margin-bottom: 15px;
+        }
+        .filter-group label {
+            font-size: 13px;
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #333;
+        }
+        .filter-group select {
+            padding: 5px;
+            width: 100%;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+        }
+        #featureCount {
+            position: fixed;
+            top: 10px;
+            right: 21%;
+            font-size: 16px;
+            font-weight: bold;
+            color: #ffffff;
+            z-index: 1001;
+            background-color: rgba(0, 94, 62, 0.7);
+            padding: 5px 10px;
+            border-radius: 5px;
+        }
+        #plotlyChartContainer {
+            height: 45%; 
+            position: relative; 
+            margin-top: 20px;
+            padding: 10px;
+            background: white; 
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+            border-radius: 8px;
+        }
+        #barChartContainer {
+            height: 45%; 
+            position: relative; 
+            margin-top: 20px; 
+            padding: 6px; 
+            background: white; 
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1); 
+            border-radius: 8px;
+        }
+        canvas { width: 100% !important; height: 100% !important; }
+        .popup-content { font-size: 14px; }
+        .chart-title {
+            text-align: center;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #333;
+            font-size: 14px;
+        }
+        /* Custom popup styles to remove white border */
+        .leaflet-popup {
+            margin-bottom: 0;
+        }
+        .leaflet-popup-content-wrapper {
+            padding: 0;
+            border-radius: 10px;
+            box-shadow: 0 3px 14px rgba(0,0,0,0.4);
+            border: none;
+        }
+        .leaflet-popup-content {
+            margin: 0;
+            padding: 0;
+            border-radius: 10px;
+        }
+        .leaflet-popup-tip {
+            background: white;
+            border: none;
+            box-shadow: 0 3px 14px rgba(0,0,0,0.4);
+        }
+        
+        /* Custom popup styling to prevent blinking */
+        .custom-popup .leaflet-popup-content-wrapper,
+        .custom-popup .leaflet-popup-tip {
+            transition: none;
+        }
+        
+        /* Ensure popups appear immediately */
+        .leaflet-fade-anim .leaflet-popup {
+            opacity: 1;
+            transition: none;
+        }
+        .sidebar-title {
+            font-weight: bold;
+            margin-bottom: 15px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid #ddd;
+            color: #056839;
+            font-size: 16px;
+            text-align: center;
+        }
+        /* Add legend styles */
+        .legend {
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 0 15px rgba(0,0,0,0.2);
+            line-height: 1.5em;
+            max-height: 300px;
+            overflow-y: auto;
+            max-width: 200px;
+        }
+        .legend i {
+            width: 18px;
+            height: 18px;
+            float: left;
+            margin-right: 8px;
+            opacity: 0.8;
+            border: 1px solid #000;
+            border-radius: 50%;
+        }
+        .legend .title {
+            font-weight: bold;
+            margin-bottom: 5px;
+            font-size: 14px;
+            border-bottom: 1px solid #ccc;
+            padding-bottom: 5px;
+        }
+        .legend .item {
+            margin-bottom: 3px;
+            font-size: 12px;
+            clear: both;
+        }
+    </style>
+</head>
+<body>
+    <div id="loading">
+        <div class="spinner"></div>
+    </div>
+    
+    <div id="error-message"></div>
+
+    <!-- New left sidebar for filters -->
+    <div id="left-sidebar">
+        <div class="sidebar-title">Structure Filters</div>
+        <div class="filter-group">
+            <label for="zoneSelect">ZONE</label>
+            <select id="zoneSelect">
+                <option value="All">All Zones</option>
+                {% for zone in unique_zones %}
+                <option value="{{ zone }}">{{ zone }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="filter-group">
+            <label for="circleSelect">CIRCLE</label>
+            <select id="circleSelect">
+                <option value="All">All Circles</option>
+                {% for circle in unique_circles %}
+                <option value="{{ circle }}">{{ circle }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="filter-group"> 
+            <label for="divisionSelect">DIVISION</label>
+            <select id="divisionSelect">
+                <option value="All">All Divisions</option>
+                {% for division in unique_divisions %}
+                <option value="{{ division }}">{{ division }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="filter-group">
+            <label for="canalSelect">CANAL</label>
+            <select id="canalSelect">
+                <option value="All">All Canals</option>
+                {% for canal in unique_canals %}
+                <option value="{{ canal }}">{{ canal }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="filter-group">
+            <button id="clearFiltersButton" title="Clear Filters">RESET</button>
+        </div>
+    </div>
+
+    <div id="featureCount"></div>
+    <div id="map"></div>
+    <a href="http://127.0.0.1:8000/" id="homeButton" title="Go to Home Page">🏠</a>
+    
+    <!-- Only left sidebar toggle button -->
+    <button id="toggleLeftButton" title="Toggle Filter Sidebar">◄</button>
+
+    <div id="sidebar">
+        <div id="plotlyChartContainer">
+            <div id="plotlyPieChart" style="width:100%; height:100%;"></div>
+        </div>
+        <div id="barChartContainer">
+            <div class="chart-title">Structures Distribution</div>
+            <canvas id="barChart"></canvas>
+        </div>
+    </div>
+
+    {% if error_msg %}
+    <script>
+        // Script to show error message from server
+        var errorElement = document.getElementById('error-message');
+        errorElement.textContent = "{{ error_msg|escapejs }}";
+        errorElement.style.display = "block";
+    </script>
+    {% endif %}
+
+    <script>
+        // Declare element variables at the beginning of the script
+        const zoneSelect = document.getElementById('zoneSelect');
+        const circleSelect = document.getElementById('circleSelect');
+        const divisionSelect = document.getElementById('divisionSelect');
+        const canalSelect = document.getElementById('canalSelect');
+
+        // Force hide loading spinner after a short timeout
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(function() {
+                document.getElementById('loading').style.display = 'none';
+                console.log("Loading spinner hidden on DOMContentLoaded");
+            }, 1500);
+        });
+        
+        // Toggle sidebar functionality
+        const toggleLeftButton = document.getElementById('toggleLeftButton');
+        const sidebar = document.getElementById('sidebar');
+        const leftSidebar = document.getElementById('left-sidebar');
+        const mapElement = document.getElementById('map');
+        const featureCount = document.getElementById('featureCount');
+        
+        // Left sidebar toggle functionality
+        toggleLeftButton.addEventListener('click', function() {
+            leftSidebar.classList.toggle('hidden');
+            toggleLeftButton.classList.toggle('hidden');
+            
+            updateMapClass();
+            
+            // Change the arrow direction
+            if (leftSidebar.classList.contains('hidden')) {
+                toggleLeftButton.innerHTML = '►';
+            } else {
+                toggleLeftButton.innerHTML = '◄';
+            }
+            
+            // Force map to recalculate size after toggle
+            setTimeout(function() {
+                map.invalidateSize();
+            }, 400);
+        });
+        
+        // Function to update map class based on left sidebar state
+        function updateMapClass() {
+            const leftHidden = leftSidebar.classList.contains('hidden');
+            
+            mapElement.classList.remove('expanded-left');
+            
+            if (leftHidden) {
+                mapElement.classList.add('expanded-left');
+            }
+        }
+        
+        // Create the map using the successful approach from data_map.html
+        var map = L.map("map", {
+            minZoom: 5,
+            maxZoom: 18
+        }).setView([29.0, 71.0], 7);
+        console.log("Map created");
+        
+        // Initial view for reset
+        const initialView = { center: [29.0, 71.0], zoom: 7 };
+        
+        // Add tile layer
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+            attribution: "&copy; OpenStreetMap contributors"
+        }).addTo(map);
+        console.log("Tile layer added");
+        
+        // Force map to recalculate size
+        setTimeout(function() {
+            map.invalidateSize();
+            console.log("Map size recalculated");
+        }, 500);
+        
+        // Parse GeoJSON data with improved parsing
+        let geoData;
+        try {
+            // The key difference: using escapejs instead of safe filter
+            geoData = JSON.parse('{{ geojson_str|escapejs }}');
+            console.log("GeoJSON data loaded successfully, features:", geoData.features.length);
+        } catch (e) {
+            console.error("Error parsing GeoJSON data:", e);
+            document.getElementById('error-message').textContent = "Error loading map data: " + e.message;
+            document.getElementById('error-message').style.display = "block";
+            geoData = {"type": "FeatureCollection", "features": []};
+        }
+        
+        let layerGroup = null;
+        let barChart;
+
+        function style(feature) {
+            return {
+                radius: 5,
+                fillColor: feature.properties.color,
+                color: "#333",
+                weight: 1,
+                opacity: 1,
+                fillOpacity: 0.8
+            };
+        }
+
+        function getContrastYIQ(hexcolor) {
+            hexcolor = hexcolor.replace("#", "");
+            var r = parseInt(hexcolor.substr(0,2),16);
+            var g = parseInt(hexcolor.substr(2,2),16);
+            var b = parseInt(hexcolor.substr(4,2),16);
+            var yiq = ((r*299)+(g*587)+(b*114))/1000;
+            return (yiq >= 128) ? 'black' : 'white';
+        }
+
+        function popupContent(props) {
+            const textColor = getContrastYIQ(props.color);
+            return `
+                <div style="background: ${props.color}; padding: 10px; color: ${textColor}; border-radius: 10px; border: none; box-shadow: none; margin: 0;">
+                    <b>Name:</b> ${props.name}<br/>
+                    <b>Canal:</b> ${props.canal}<br/>
+                    <b>Division:</b> ${props.division}<br/>
+                    <b>Circle:</b> ${props.circle}<br/>
+                    <b>Zone:</b> ${props.zone}<br/>
+                    <b>Type:</b> ${props.type}<br/>
+                    <b>Lat:</b> ${props.lat.toFixed(6)};
+                    <b>Lon:</b> ${props.long.toFixed(6)}
+                </div>`;
+        }
+
+        function onEachFeature(feature, layer) {
+            layer.on({
+                mouseover: function(e) {
+                    layer.openPopup();
+                },
+                mouseout: function(e) {
+                    layer.closePopup();
+                }
+            });
+            layer.bindPopup(popupContent(feature.properties));
+        }
+
+        // Home button functionality
+        document.getElementById('homeButton').addEventListener('click', function(e) {
+            // Keep the link navigation functionality (don't need to prevent default)
+            
+            // Also reset map view and filters before navigation
+            map.setView(initialView.center, initialView.zoom);
+            
+            // Reset all filters
+            document.getElementById('zoneSelect').value = 'All';
+            document.getElementById('circleSelect').value = 'All';
+            document.getElementById('divisionSelect').value = 'All';
+            document.getElementById('canalSelect').value = 'All';
+            
+            // Make sure left sidebar is visible
+            if (leftSidebar.classList.contains('hidden')) {
+                leftSidebar.classList.remove('hidden');
+                toggleLeftButton.classList.remove('hidden');
+                toggleLeftButton.innerHTML = '◄';
+            }
+            
+            // Update map class
+            updateMapClass();
+            
+            // Refresh filters and apply
+            filterDropdowns();
+            applyFilters();
+            
+            // Force map to recalculate size
+            setTimeout(function() {
+                map.invalidateSize();
+            }, 400);
+        });
+        
+        // Clear filters button functionality
+        document.getElementById('clearFiltersButton').addEventListener('click', function() {
+            // Reset all filters
+            document.getElementById('zoneSelect').value = 'All';
+            document.getElementById('circleSelect').value = 'All';
+            document.getElementById('divisionSelect').value = 'All';
+            document.getElementById('canalSelect').value = 'All';
+            
+            // Make sure left sidebar is visible
+            if (leftSidebar.classList.contains('hidden')) {
+                leftSidebar.classList.remove('hidden');
+                toggleLeftButton.classList.remove('hidden');
+                toggleLeftButton.innerHTML = '◄';
+            }
+            
+            // Update map class
+            updateMapClass();
+            
+            // Refresh filters and apply
+            filterDropdowns();
+            applyFilters();
+            
+            // Force map to recalculate size
+            setTimeout(function() {
+                map.invalidateSize();
+            }, 400);
+        });
+
+        // Function to update Plotly pie chart dynamically
+        function updatePlotlyPieChart(features) {
+            try {
+                // Count structure types for pie chart (swapped from bar chart)
+                const counts = {};
+                features.forEach(f => {
+                    const type = f.properties.type || "Unknown";
+                    counts[type] = (counts[type] || 0) + 1;
+                });
+
+                const labels = Object.keys(counts);
+                const values = Object.values(counts);
+                const colors = ['#FF6384','#36A2EB','#FFCE56','#4BC0C0','#9966FF','#FF9F40','#00CC99','#FF9999','#66B2FF','#99FF99'];
+
+                // Create pie chart data
+                const data = [{
+                    values: values,
+                    labels: labels.map((label, i) => `${label} (${values[i]})`),
+                    type: 'pie',
+                    hole: 0.3,
+                    marker: {
+                        colors: colors.slice(0, labels.length)
+                    },
+                    textinfo: 'value',
+                    textposition: 'inside',
+                    hovertemplate: '<b>%{label}</b><br>Count: %{value}<br>Percentage: %{percent}<extra></extra>'
+                }];
+
+                const layout = {
+                    title: {
+                        text: `<b>Structure Type</b>`,
+                        x: 0.5,
+                        font: {size: 14, weight: 'bold' }
+                    },
+                    font: { size: 11 },
+                    margin: { t: 40, b: 80, l: 20, r: 20 },
+                    height: 350,
+                    showlegend: true,
+                    legend: {
+                        orientation: "v",
+                        yanchor: "top",
+                        y: -0.15,
+                        xanchor: "center",
+                        x: 0.5,
+                        font: { size: 10 },
+                        itemsizing: 'constant',
+                        itemwidth: 30,
+                        traceorder: 'normal',
+                        nrows: 2
+                    }
+                };
+
+                const config = {
+                    displayModeBar: false,
+                    responsive: true
+                };
+
+                Plotly.newPlot('plotlyPieChart', data, layout, config);
+            } catch (error) {
+                console.error("Error updating pie chart:", error);
+            }
+        }
+
+        function updateBarChart(features) {
+            try {
+                const zone = zoneSelect.value;
+                const circle = circleSelect.value;
+                const division = divisionSelect.value;
+
+                // Determine what level to show in bar chart (swapped from pie chart)
+                let labelKey = 'zone';
+                if (zone !== "All") labelKey = 'circle';
+                if (circle !== "All") labelKey = 'division';
+                if (division !== "All") labelKey = 'canal';
+
+                // Count by the determined level
+                const counts = {};
+                features.forEach(f => {
+                    const key = f.properties[labelKey] || "Unknown";
+                    counts[key] = (counts[key] || 0) + 1;
+                });
+
+                const labels = Object.keys(counts);
+                const data = Object.values(counts);
+                const backgroundColors = ['#FA6384','#3BA2EB','#FCCE56','#4DC0C0','#99A6FF','#FC9F40','#0FCC99','#FF9999','#66B2FF','#99FF99'];
+
+                if (barChart) barChart.destroy();
+                const barCtx = document.getElementById('barChart').getContext('2d');
+                barChart = new Chart(barCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: `${labelKey.charAt(0).toUpperCase() + labelKey.slice(1)} Distribution`,
+                            data: data,
+                            backgroundColor: backgroundColors.slice(0, labels.length)
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            datalabels: {
+                                anchor: 'end',
+                                align: 'start',
+                                color: '#000',
+                                font: { weight: 'bold', size: 11 },
+                                formatter: value => value
+                            }
+                        },
+                        scales: {
+                            y: { beginAtZero: true },
+                            x: {
+                                ticks: {
+                                    maxRotation: 45,
+                                    minRotation: 45,
+                                    font: { size: 10 }
+                                }
+                            }
+                        }
+                    },
+                    plugins: [ChartDataLabels]
+                });
+            } catch (error) {
+                console.error("Error updating bar chart:", error);
+            }
+        }
+
+        function zoomToFeatures(features) {
+            try {
+                if (features.length === 0) return;
+                
+                const bounds = L.latLngBounds();
+                features.forEach(f => {
+                    const coords = f.geometry.coordinates;
+                    bounds.extend([coords[1], coords[0]]);
+                });
+                map.fitBounds(bounds, { padding: [50, 50] });
+            } catch (error) {
+                console.error("Error zooming to features:", error);
+            }
+        }
+
+        // Dropdown management functions
+        let zones = [...new Set(geoData.features.map(f => f.properties.zone).filter(Boolean))].sort();
+        let circles = [...new Set(geoData.features.map(f => f.properties.circle).filter(Boolean))].sort();
+        let divisions = [...new Set(geoData.features.map(f => f.properties.division).filter(Boolean))].sort();
+        let canals = [...new Set(geoData.features.map(f => f.properties.canal).filter(Boolean))].sort();
+
+        function updateOptions(select, items) {
+            const oldVal = select.value;
+            select.innerHTML = '<option value="All">All</option>' + items.map(i => `<option value="${i}">${i}</option>`).join('');
+            if (items.includes(oldVal)) {
+                select.value = oldVal;
+            } else {
+                select.value = 'All';
+            }
+        }
+
+        function filterDropdowns() {
+            try {
+                const zoneVal = zoneSelect.value;
+                let filteredCircles = circles;
+                let filteredDivisions = divisions;
+                let filteredCanals = canals;
+
+                if (zoneVal !== 'All') {
+                    filteredCircles = [...new Set(geoData.features.filter(f => f.properties.zone === zoneVal).map(f => f.properties.circle).filter(Boolean))].sort();
+                    filteredDivisions = [...new Set(geoData.features.filter(f => f.properties.zone === zoneVal).map(f => f.properties.division).filter(Boolean))].sort();
+                    filteredCanals = [...new Set(geoData.features.filter(f => f.properties.zone === zoneVal).map(f => f.properties.canal).filter(Boolean))].sort();
+                }
+
+                updateOptions(circleSelect, filteredCircles);
+                updateOptions(divisionSelect, filteredDivisions);
+                updateOptions(canalSelect, filteredCanals);
+                filterCircles();
+            } catch (error) {
+                console.error("Error filtering dropdowns:", error);
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+
+        function filterCircles() {
+            const zoneVal = zoneSelect.value;
+            const circleVal = circleSelect.value;
+            let filteredDivisions = divisions;
+            let filteredCanals = canals;
+
+            if (circleVal !== 'All') {
+                filteredDivisions = [...new Set(geoData.features.filter(f => (zoneVal === 'All' || f.properties.zone === zoneVal) && f.properties.circle === circleVal).map(f => f.properties.division).filter(Boolean))].sort();
+                filteredCanals = [...new Set(geoData.features.filter(f => (zoneVal === 'All' || f.properties.zone === zoneVal) && f.properties.circle === circleVal).map(f => f.properties.canal).filter(Boolean))].sort();
+            } else if (zoneVal !== 'All') {
+                filteredDivisions = [...new Set(geoData.features.filter(f => f.properties.zone === zoneVal).map(f => f.properties.division).filter(Boolean))].sort();
+                filteredCanals = [...new Set(geoData.features.filter(f => f.properties.zone === zoneVal).map(f => f.properties.canal).filter(Boolean))].sort();
+            }
+
+            updateOptions(divisionSelect, filteredDivisions);
+            updateOptions(canalSelect, filteredCanals);
+            filterDivisions();
+        }
+
+        function filterDivisions() {
+            const zoneVal = zoneSelect.value;
+            const circleVal = circleSelect.value;
+            const divisionVal = divisionSelect.value;
+            let filteredCanals = canals;
+
+            if (divisionVal !== 'All') {
+                filteredCanals = [...new Set(geoData.features.filter(f => 
+                    (zoneVal === 'All' || f.properties.zone === zoneVal) &&
+                    (circleVal === 'All' || f.properties.circle === circleVal) &&
+                    f.properties.division === divisionVal).map(f => f.properties.canal).filter(Boolean))].sort();
+            } else if (circleVal !== 'All') {
+                filteredCanals = [...new Set(geoData.features.filter(f => 
+                    (zoneVal === 'All' || f.properties.zone === zoneVal) &&
+                    f.properties.circle === circleVal).map(f => f.properties.canal).filter(Boolean))].sort();
+            } else if (zoneVal !== 'All') {
+                filteredCanals = [...new Set(geoData.features.filter(f => f.properties.zone === zoneVal).map(f => f.properties.canal).filter(Boolean))].sort();
+            }
+
+            updateOptions(canalSelect, filteredCanals);
+            applyFilters();
+        }
+
+        // Initialize the map
+        try {
+            console.log("Starting map initialization");
+            
+            // Display initial feature count
+            const totalCount = geoData.features.length;
+            document.getElementById('featureCount').textContent = `${totalCount} Records`;
+
+            // Create a color palette for canals - moved to global scope
+            const colorPalette = [
+                "#FF6384", "#36A2EB", "#FFCE56", "#4BC0C0", "#9966FF", 
+                "#FF9F40", "#00CC99", "#FF9999", "#66B2FF", "#99FF99",
+                "#C9CBCF", "#7D8FAF", "#B5EAD7", "#E2F0CB", "#FFDAC1"
+            ];
+            
+            // Global map for consistent canal colors across filter changes
+            const globalCanalColorMap = {};
+            
+            // Get all unique canals and assign colors once
+            const allCanals = [...new Set(geoData.features.map(f => f.properties.canal).filter(Boolean))].sort();
+            allCanals.forEach((canal, index) => {
+                globalCanalColorMap[canal] = colorPalette[index % colorPalette.length];
+            });
+            
+            // Create canal color legend - will be called from applyFilters
+            let canalLegend = null;
+            
+            function updateCanalLegend(filteredFeatures) {
+                // Remove existing legend if it exists
+                if (canalLegend) {
+                    map.removeControl(canalLegend);
+                }
+                
+                // Get canals from the filtered features
+                const canals = [...new Set(filteredFeatures.map(f => f.properties.canal).filter(Boolean))].sort();
+                
+                // Don't show legend if no canals
+                if (canals.length === 0) return;
+                
+                // Create the legend
+                canalLegend = L.control({position: 'bottomright'});
+                
+                canalLegend.onAdd = function(map) {
+                    const div = L.DomUtil.create('div', 'info legend');
+                    div.innerHTML = '<div class="title">Canals</div>';
+                    
+                    canals.forEach(canal => {
+                        const color = globalCanalColorMap[canal] || "#AAAAAA";
+                        div.innerHTML += `<div class="item"><i style="background:${color}"></i> ${canal}</div>`;
+                    });
+                    
+                    return div;
+                };
+                
+                canalLegend.addTo(map);
+            }
+            
+            // Assign colors to features based on their canal
+            geoData.features.forEach(feature => {
+                if (feature.properties.canal) {
+                    feature.properties.color = globalCanalColorMap[feature.properties.canal] || "#AAAAAA";
+                } else {
+                    feature.properties.color = "#AAAAAA"; // Default gray
+                }
+            });
+            
+            filterDropdowns();
+            applyFilters();
+        } catch (error) {
+            console.error("Error initializing map:", error);
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('error-message').textContent = "Error initializing map: " + error.message;
+            document.getElementById('error-message').style.display = "block";
+        }
+        
+        // Ensure loading spinner is hidden after a timeout as a final fallback
+        setTimeout(function() {
+            document.getElementById('loading').style.display = 'none';
+            console.log("Loading spinner hidden by final fallback");
+        }, 3000);
+
+        // Update applyFilters function to update the legend
+        function applyFilters() {
+            try {
+                const zone = zoneSelect.value;
+                const circle = circleSelect.value;
+                const division = divisionSelect.value;
+                const canal = canalSelect.value;
+
+                console.log("Applying filters:", {zone, circle, division, canal});
+
+                // Filter the features based on selections
+                const filtered = geoData.features.filter(f => {
+                    return (zone === "All" || f.properties.zone === zone) &&
+                        (circle === "All" || f.properties.circle === circle) &&
+                        (division === "All" || f.properties.division === division) &&
+                        (canal === "All" || f.properties.canal === canal);
+                });
+
+                console.log("Filtered features count:", filtered.length);
+                
+                // Update feature count display
+                const totalCount = geoData.features.length;
+                document.getElementById('featureCount').textContent = `${filtered.length} of ${totalCount} Records`;
+                
+                // Remove existing layer if it exists
+                if (layerGroup) {
+                    map.removeLayer(layerGroup);
+                }
+                
+                // Create a collection of features to add to the map
+                const featureCollection = {
+                    "type": "FeatureCollection",
+                    "features": filtered
+                };
+                
+                // Add the new layer with the filtered features
+                layerGroup = L.geoJSON(featureCollection, {
+                    pointToLayer: (f, latlng) => L.circleMarker(latlng, style(f)),
+                    onEachFeature: onEachFeature
+                }).addTo(map);
+                console.log("Layer group added to map");
+
+                // Update charts with the filtered data
+                updatePlotlyPieChart(filtered);
+                updateBarChart(filtered);
+                
+                // Update the canal legend with filtered features
+                updateCanalLegend(filtered);
+                
+                // Zoom to show all filtered features
+                if (filtered.length > 0) {
+                    zoomToFeatures(filtered);
+                }
+                
+                // Ensure loading spinner is hidden
+                document.getElementById('loading').style.display = 'none';
+                
+            } catch (error) {
+                console.error("Error applying filters:", error);
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('error-message').textContent = "Error applying filters: " + error.message;
+                document.getElementById('error-message').style.display = "block";
+                
+                // Fallback - try direct approach
+                try {
+                    if (layerGroup) map.removeLayer(layerGroup);
+                    layerGroup = L.geoJSON(geoData, {
+                        pointToLayer: (f, latlng) => L.circleMarker(latlng, style(f)),
+                        onEachFeature: onEachFeature
+                    }).addTo(map);
+                    zoomToFeatures(geoData.features);
+                    // Update legend with all features as fallback
+                    updateCanalLegend(geoData.features);
+                } catch (e) {
+                    console.error("Fallback rendering also failed:", e);
+                }
+            }
+        }
+
+        zoneSelect.addEventListener('change', () => {
+            filterDropdowns();
+        });
+        circleSelect.addEventListener('change', () => {
+            filterCircles();
+        });
+        divisionSelect.addEventListener('change', () => {
+            filterDivisions();
+        });
+        canalSelect.addEventListener('change', () => {
+            applyFilters();
+        });
+    </script>
+</body>
+</html>
